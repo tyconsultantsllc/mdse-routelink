@@ -125,12 +125,12 @@ export function generateReportHTML(title: string, data: any) {
       </head>
       <body>
         <div class="header">
-          <div class="logo">🚚 PharmaTrack Express</div>
+          <div class="logo">🚚 MDSE RouteLink</div>
           <div class="date">Generated: ${new Date().toLocaleDateString()}</div>
         </div>
         ${data}
         <div class="footer">
-          <p>&copy; ${new Date().getFullYear()} PharmaTrack Express. All rights reserved.</p>
+          <p>&copy; ${new Date().getFullYear()} MDSE RouteLink. All rights reserved.</p>
           <p>This report is confidential and intended for internal use only.</p>
         </div>
       </body>

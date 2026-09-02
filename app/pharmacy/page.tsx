@@ -137,7 +137,7 @@ export default function PharmacyDashboard() {
       title: "Logged out successfully",
       description: "You have been logged out of your account.",
     })
-    router.push("/login")
+    router.push("/auth/login")
   }
 
   const incomingDeliveries = deliveries.filter((d) => d.status === "pending" || d.status === "in-progress")

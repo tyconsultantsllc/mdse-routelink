@@ -21,7 +21,7 @@ export default function SettingsPage() {
   // Profile settings
   const [profileData, setProfileData] = useState({
     name: "Admin User",
-    email: "admin@pharmatrack.com",
+    email: "admin@mdseroutelink.com",
     phone: "+1 (555) 123-4567",
     role: "Super Admin",
   })
@@ -39,7 +39,7 @@ export default function SettingsPage() {
   // Company settings
   const [companySettings, setCompanySettings] = useState({
     companyName: "MDSE RouteLink",
-    email: "contact@pharmatrack.com",
+    email: "contact@mdseroutelink.com",
     phone: "+1 (555) 100-2000",
     address: "123 Business Street, Suite 100",
     city: "San Francisco",

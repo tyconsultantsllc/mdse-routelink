@@ -257,12 +257,12 @@ export default function DriverTrackingPage() {
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
-    localStorage.removeItem("pharmatrack_user")
+    localStorage.removeItem("mdse_routelink_user")
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out",
     })
-    router.push("/login")
+    router.push("/auth/login")
   }
 
   useEffect(() => {

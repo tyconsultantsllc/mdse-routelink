@@ -29,12 +29,12 @@ export function AdminHeader({
   const { toast } = useToast()
 
   const handleLogout = () => {
-    localStorage.removeItem("pharmatrack_user")
+    localStorage.removeItem("mdse_routelink_user")
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out",
     })
-    router.push("/login")
+    router.push("/auth/login")
   }
 
   return (
