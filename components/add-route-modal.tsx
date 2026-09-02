@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
+import { geocodeAddress } from "@/lib/geocode"
 
 interface AddRouteModalProps {
   open: boolean
@@ -33,6 +34,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
   const [startTime, setStartTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false)
+  const [preparedStops, setPreparedStops] = useState<any[]>([])
+  const [isPreparingOptimizer, setIsPreparingOptimizer] = useState(false)
   const [stops, setStops] = useState<RouteStopForm[]>([
     {
       pharmacyId: "",
@@ -41,7 +44,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
       dropoffAddress: "",
     },
   ])
-  const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string }>>([])
+  const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string; latitude?: number; longitude?: number }>>([])
   const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -60,6 +63,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
         id: p.id,
         name: p.name,
         address: p.address,
+        latitude: p.latitude,
+        longitude: p.longitude,
       })))
     } catch (error) {
       toast({
@@ -164,28 +169,44 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
     }
   }
 
-  const prepareStopsForOptimization = () => {
-    return stops
-      .filter((s) => s.pharmacyId && s.dropoffAddress)
-      .map((stop, index) => ({
-        id: `stop-${index}`,
-        pharmacy_id: stop.pharmacyId,
-        name: stop.pharmacyName,
-        latitude: getPharmacyCoordinates(stop.pharmacyId).lat,
-        longitude: getPharmacyCoordinates(stop.pharmacyId).lng,
-        priority: priority as "urgent" | "high" | "medium" | "low",
-        pickupAddress: stop.pickupAddress,
-        dropoffAddress: stop.dropoffAddress,
-      }))
+  const prepareStopsForOptimization = async () => {
+    const validStops = stops.filter((s) => s.pharmacyId && s.dropoffAddress)
+
+    return Promise.all(
+      validStops.map(async (stop, index) => {
+        const coords = await getPharmacyCoordinates(stop.pharmacyId)
+        return {
+          id: `stop-${index}`,
+          pharmacy_id: stop.pharmacyId,
+          name: stop.pharmacyName,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          priority: priority as "urgent" | "high" | "medium" | "low",
+          pickupAddress: stop.pickupAddress,
+          dropoffAddress: stop.dropoffAddress,
+        }
+      }),
+    )
   }
 
-  const getPharmacyCoordinates = (pharmacyId: string) => {
-    const pharmacy = pharmacies.find(p => p.id === pharmacyId)
-    if (pharmacy) {
-      // For now, return default Orange County coordinates
-      // TODO: Add lat/lng to pharmacies table
-      return { lat: 33.7175, lng: -117.8311 }
+  const getPharmacyCoordinates = async (pharmacyId: string): Promise<{ lat: number; lng: number }> => {
+    const pharmacy = pharmacies.find((p) => p.id === pharmacyId)
+
+    // Prefer the pharmacy's real stored coordinates (populated for seeded
+    // pharmacies; may be missing for ones added later without geocoding).
+    if (pharmacy?.latitude != null && pharmacy?.longitude != null) {
+      return { lat: pharmacy.latitude, lng: pharmacy.longitude }
     }
+
+    // Fall back to geocoding the pharmacy's address live rather than
+    // silently returning a fixed point that isn't actually where it is.
+    if (pharmacy?.address) {
+      const geocoded = await geocodeAddress(pharmacy.address)
+      if (geocoded) return geocoded
+    }
+
+    // Last resort if geocoding fails entirely (e.g. malformed address) —
+    // an approximate Orange County center point, better than crashing.
     return { lat: 33.7175, lng: -117.8311 }
   }
 
@@ -225,7 +246,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
     })
   }
 
-  const handleOptimizeClick = () => {
+  const handleOptimizeClick = async () => {
     if (stops.filter((s) => s.pharmacyId && s.dropoffAddress).length < 2) {
       toast({
         title: "Not Enough Stops",
@@ -234,7 +255,21 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
       })
       return
     }
-    setIsOptimizerOpen(true)
+
+    setIsPreparingOptimizer(true)
+    try {
+      const prepared = await prepareStopsForOptimization()
+      setPreparedStops(prepared)
+      setIsOptimizerOpen(true)
+    } catch {
+      toast({
+        title: "Error",
+        description: "Could not look up pharmacy locations",
+        variant: "destructive",
+      })
+    } finally {
+      setIsPreparingOptimizer(false)
+    }
   }
 
   return (
@@ -303,10 +338,10 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
                   variant="outline"
                   size="sm"
                   onClick={handleOptimizeClick}
-                  disabled={stops.filter((s) => s.pharmacyId && s.dropoffAddress).length < 2}
+                  disabled={isPreparingOptimizer || stops.filter((s) => s.pharmacyId && s.dropoffAddress).length < 2}
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Optimize
+                  {isPreparingOptimizer ? "Looking up locations..." : "Optimize"}
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={addStop}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -404,7 +439,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
       <RouteOptimizerDialog
         isOpen={isOptimizerOpen}
         onClose={() => setIsOptimizerOpen(false)}
-        stops={prepareStopsForOptimization()}
+        stops={preparedStops}
         onOptimize={handleOptimizedStops}
       />
     </Dialog>

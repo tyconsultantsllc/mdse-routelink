@@ -5,6 +5,7 @@ import { Sparkles, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { optimizeStopsWithOrder } from "@/lib/route-optimizer"
+import { geocodeAddress } from "@/lib/geocode"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface RouteOptimizerDialogProps {
@@ -16,17 +17,39 @@ interface RouteOptimizerDialogProps {
 
 export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: RouteOptimizerDialogProps) {
   const [isOptimizing, setIsOptimizing] = useState(false)
+  const [progressText, setProgressText] = useState("")
 
-  const handleOptimize = () => {
+  const handleOptimize = async () => {
     setIsOptimizing(true)
 
-    // Simulate processing time
-    setTimeout(() => {
-      const optimized = optimizeStopsWithOrder(stops)
+    try {
+      // Nominatim's public server caps requests at roughly 1/second, so
+      // these run sequentially with a short pause rather than in parallel.
+      const stopsWithDropoffCoords = []
+      for (let i = 0; i < stops.length; i++) {
+        const stop = stops[i]
+        setProgressText(`Locating stop ${i + 1} of ${stops.length}...`)
+
+        const dropoffCoords = await geocodeAddress(stop.dropoffAddress)
+        stopsWithDropoffCoords.push({
+          ...stop,
+          dropoffLatitude: dropoffCoords?.lat,
+          dropoffLongitude: dropoffCoords?.lng,
+        })
+
+        if (i < stops.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1100))
+        }
+      }
+
+      setProgressText("Calculating best order...")
+      const optimized = optimizeStopsWithOrder(stopsWithDropoffCoords)
       onOptimize(optimized.stops)
+    } finally {
       setIsOptimizing(false)
+      setProgressText("")
       onClose()
-    }, 1000)
+    }
   }
 
   return (
@@ -88,7 +111,7 @@ export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: Rou
               {isOptimizing ? (
                 <>
                   <Sparkles className="h-4 w-4 mr-2 animate-spin" />
-                  Optimizing...
+                  {progressText || "Optimizing..."}
                 </>
               ) : (
                 <>
