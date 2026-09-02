@@ -88,7 +88,7 @@ export default function LoginPage() {
         {/* Header */}
         <div className="bg-primary py-6 px-8 text-center">
           <Truck className="h-12 w-12 text-primary-foreground mx-auto" />
-          <h2 className="mt-2 text-2xl font-bold text-primary-foreground">PharmaTrack Express</h2>
+          <h2 className="mt-2 text-2xl font-bold text-primary-foreground">MDSE RouteLink</h2>
           <p className="mt-1 text-primary-foreground/80">Pharmaceutical Delivery Tracking</p>
         </div>
 

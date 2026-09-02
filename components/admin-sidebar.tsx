@@ -46,7 +46,7 @@ export function AdminSidebar() {
         <div className="flex items-center justify-between h-16 px-4">
           <div className="flex items-center">
             <Truck className="text-primary h-6 w-6" />
-            <span className="ml-2 text-lg font-bold text-foreground">PharmaTrack</span>
+            <span className="ml-2 text-lg font-bold text-foreground">MDSE RouteLink</span>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -71,7 +71,7 @@ export function AdminSidebar() {
             {/* Logo */}
             <div className="flex items-center justify-center h-16 px-4 bg-primary">
               <Truck className="text-primary-foreground h-8 w-8" />
-              <span className="ml-2 text-xl font-bold text-primary-foreground">PharmaTrack</span>
+              <span className="ml-2 text-xl font-bold text-primary-foreground">MDSE RouteLink</span>
             </div>
 
             {/* Navigation */}

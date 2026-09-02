@@ -50,7 +50,7 @@ export function AddressAutocompleteInput({
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=us&limit=5&addressdetails=1`,
         {
           headers: {
-            'User-Agent': 'PharmaTrack/1.0'
+            'User-Agent': 'MDSE-RouteLink/1.0'
           }
         }
       )

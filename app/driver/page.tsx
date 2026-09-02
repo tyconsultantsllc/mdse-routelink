@@ -341,7 +341,7 @@ export default function DriverTrackingPage() {
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
                 <Truck className="text-primary h-6 w-6 md:h-8 md:w-8" />
-                <span className="ml-2 text-lg md:text-xl font-bold text-foreground">PharmaTrack</span>
+                <span className="ml-2 text-lg md:text-xl font-bold text-foreground">MDSE RouteLink</span>
               </div>
             </div>
             <div className="flex items-center gap-2 md:gap-4">
@@ -614,7 +614,7 @@ export default function DriverTrackingPage() {
       <footer className="bg-card border-t border-border">
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <p className="text-center text-sm text-muted-foreground">
-            &copy; 2023 PharmaTrack Express. All rights reserved.
+            &copy; 2023 MDSE RouteLink. All rights reserved.
           </p>
         </div>
       </footer>

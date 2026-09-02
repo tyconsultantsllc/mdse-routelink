@@ -38,7 +38,7 @@ export default function SettingsPage() {
 
   // Company settings
   const [companySettings, setCompanySettings] = useState({
-    companyName: "PharmaTrack Express",
+    companyName: "MDSE RouteLink",
     email: "contact@pharmatrack.com",
     phone: "+1 (555) 100-2000",
     address: "123 Business Street, Suite 100",

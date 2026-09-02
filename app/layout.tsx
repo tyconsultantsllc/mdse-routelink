@@ -9,7 +9,7 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "PharmaTrack Express | Pharmaceutical Delivery Tracking",
+  title: "MDSE RouteLink | Pharmaceutical Delivery Tracking",
   description: "Complete pharmaceutical delivery tracking and management system",
   generator: "v0.app",
 }
