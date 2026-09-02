@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { AddPharmacyModal } from "@/components/add-pharmacy-modal"
+import { EditPharmacyModal } from "@/components/edit-pharmacy-modal"
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function PharmacyManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingPharmacy, setEditingPharmacy] = useState<any>(null)
   const { toast } = useToast()
   const [pharmacies, setPharmacies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,14 +41,13 @@ export default function PharmacyManagement() {
     }
   }
 
-  const handleEditPharmacy = (pharmacyId: string, pharmacyName: string) => {
-    toast({
-      title: "Edit Pharmacy",
-      description: `Opening editor for ${pharmacyName}`,
-    })
+  const handleEditPharmacy = (pharmacy: any) => {
+    setEditingPharmacy(pharmacy)
   }
 
   const handleDeletePharmacy = async (pharmacyId: string, pharmacyName: string) => {
+    if (!confirm(`Are you sure you want to delete ${pharmacyName}?`)) return
+
     try {
       const { createClient } = await import("@/lib/supabase/client")
       const supabase = createClient()
@@ -59,10 +60,17 @@ export default function PharmacyManagement() {
         description: `${pharmacyName} has been removed from the system`,
       })
       fetchPharmacies()
-    } catch (error) {
+    } catch (error: any) {
+      // Postgres error 23503 = foreign key violation. This pharmacy is
+      // still referenced by an existing route, delivery log, or pharmacy
+      // user account, and the database is correctly refusing to delete it
+      // rather than leaving orphaned records behind.
+      const isForeignKeyViolation = error?.code === "23503"
       toast({
         title: "Error",
-        description: "Failed to delete pharmacy",
+        description: isForeignKeyViolation
+          ? `Can't delete ${pharmacyName} — it's still used by existing routes or deliveries. Remove those first.`
+          : error?.message || "Failed to delete pharmacy",
         variant: "destructive",
       })
     }
@@ -157,7 +165,7 @@ export default function PharmacyManagement() {
                                 variant="ghost"
                                 size="icon"
                                 className="mr-2"
-                                onClick={() => handleEditPharmacy(pharmacy.id, pharmacy.name)}
+                                onClick={() => handleEditPharmacy(pharmacy)}
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -200,6 +208,12 @@ export default function PharmacyManagement() {
         </div>
 
         <AddPharmacyModal open={isModalOpen} onOpenChange={setIsModalOpen} onSuccess={handlePharmacyAdded} />
+        <EditPharmacyModal
+          open={!!editingPharmacy}
+          onOpenChange={(open) => !open && setEditingPharmacy(null)}
+          pharmacy={editingPharmacy}
+          onSuccess={fetchPharmacies}
+        />
       </div>
     </TooltipProvider>
   )

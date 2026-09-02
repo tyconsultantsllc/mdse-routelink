@@ -187,6 +187,26 @@ export async function createUser(input: {
   return data.user
 }
 
+export async function deleteUser(userId: string) {
+  const { role, userId: callerId } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  if (userId === callerId) {
+    throw new Error('You cannot delete your own account')
+  }
+
+  // Same reason as createUser: auth.admin methods require the service-role
+  // client. The anon client this was previously called from has no
+  // permission to do this and would always fail.
+  const supabase = createAdminClient()
+  const { error } = await supabase.auth.admin.deleteUser(userId)
+
+  if (error) throw error
+}
+
 export async function updateUser(userId: string, updates: {
   firstName?: string
   lastName?: string

@@ -74,12 +74,8 @@ export default function UsersPage() {
     if (!confirm("Are you sure you want to delete this user?")) return
 
     try {
-      const { createClient } = await import("@/lib/supabase/client")
-      const supabase = createClient()
-
-      const { error } = await supabase.auth.admin.deleteUser(userId)
-
-      if (error) throw error
+      const { deleteUser } = await import("@/app/actions/data-actions")
+      await deleteUser(userId)
 
       toast({
         title: "Success",
