@@ -140,6 +140,53 @@ export async function getDriverRoute() {
   return data
 }
 
+export async function createUser(input: {
+  email: string
+  password: string
+  firstName: string
+  lastName: string
+  phone?: string
+  role: 'admin' | 'driver' | 'pharmacy'
+  vehicleType?: string
+  vehiclePlate?: string
+  licenseNumber?: string
+  pharmacyId?: string
+}) {
+  const { role: callerRole } = await verifyAuth()
+
+  if (callerRole !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  // Using the admin API rather than supabase.auth.signUp() is essential here:
+  // signUp() establishes a session for whoever it creates, which would replace
+  // the calling admin's own session in their browser. The admin API creates
+  // the account without touching any existing session, and email_confirm:true
+  // skips the confirmation-email step, appropriate for accounts an admin is
+  // provisioning directly rather than public self-signup.
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: {
+      role: input.role,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      phone: input.phone,
+      vehicle_type: input.vehicleType,
+      vehicle_plate: input.vehiclePlate,
+      license_number: input.licenseNumber,
+      pharmacy_id: input.pharmacyId,
+    },
+  })
+
+  if (error) throw error
+
+  return data.user
+}
+
 export async function updateUser(userId: string, updates: {
   firstName?: string
   lastName?: string

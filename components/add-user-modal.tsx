@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { createUser } from "@/app/actions/data-actions"
 
 interface AddUserModalProps {
   isOpen: boolean
@@ -51,27 +52,18 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-
-      // Create auth user with metadata
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      await createUser({
         email: formData.email,
         password: formData.password,
-        options: {
-          data: {
-            role: formData.role,
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            phone: formData.phone,
-            vehicle_type: formData.vehicleType,
-            vehicle_plate: formData.vehiclePlate,
-            license_number: formData.licenseNumber,
-            pharmacy_id: formData.pharmacyId,
-          },
-        },
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        role: formData.role as "admin" | "driver" | "pharmacy",
+        vehicleType: formData.vehicleType,
+        vehiclePlate: formData.vehiclePlate,
+        licenseNumber: formData.licenseNumber,
+        pharmacyId: formData.pharmacyId,
       })
-
-      if (authError) throw authError
 
       toast({
         title: "Success",
