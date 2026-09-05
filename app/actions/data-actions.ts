@@ -432,6 +432,38 @@ export async function getRouteById(routeId: number) {
   }
 }
 
+export async function deleteRoute(routeId: number) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: route, error: fetchError } = await supabase
+    .from('routes')
+    .select('status')
+    .eq('id', routeId)
+    .single()
+
+  if (fetchError) throw fetchError
+
+  // route_stops and delivery_logs both cascade-delete with their route, so
+  // deleting a route that's already been driven would wipe real delivery
+  // history along with it. Only pending/cancelled routes are safe to remove
+  // outright; anything else should be cancelled instead, not deleted.
+  if (route.status === 'completed' || route.status === 'in-progress' || route.status === 'in_progress') {
+    throw new Error(
+      `Can't delete a route that's ${route.status === 'completed' ? 'already completed' : 'in progress'} — this would also delete its delivery history. Cancel it instead if it needs to be stopped.`,
+    )
+  }
+
+  const { error } = await supabase.from('routes').delete().eq('id', routeId)
+
+  if (error) throw error
+}
+
 export async function updateRoute(routeId: number, routeData: {
   name: string
   startTime?: string
@@ -500,4 +532,200 @@ export async function updateRoute(routeId: number, routeData: {
   if (stopsError) throw stopsError
 
   return { success: true }
+}
+
+export async function broadcastMessageToAllDrivers(content: string) {
+  const { role, userId } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: drivers, error: driversError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'driver')
+
+  if (driversError) throw driversError
+  if (!drivers || drivers.length === 0) {
+    return { sentTo: 0 }
+  }
+
+  const driverIds = drivers.map((d) => d.id)
+
+  // Find each driver's existing dispatch conversation, if they have one
+  const { data: existingParticipants, error: participantsError } = await supabase
+    .from('conversation_participants')
+    .select('user_id, conversation_id, conversations!inner(type)')
+    .in('user_id', driverIds)
+    .eq('conversations.type', 'dispatch')
+
+  if (participantsError) throw participantsError
+
+  const driverIdToConversationId = new Map<string, string>()
+  for (const p of existingParticipants || []) {
+    driverIdToConversationId.set(p.user_id, p.conversation_id)
+  }
+
+  // Any driver who's never opened dispatch yet doesn't have a conversation
+  // to broadcast into — create one so the message reaches them too, same
+  // as if they'd sent the first message themselves.
+  const driversNeedingConversation = driverIds.filter((id) => !driverIdToConversationId.has(id))
+
+  for (const driverId of driversNeedingConversation) {
+    const { data: conversation, error: convError } = await supabase
+      .from('conversations')
+      .insert({ type: 'dispatch' })
+      .select()
+      .single()
+
+    if (convError) throw convError
+
+    const { error: partError } = await supabase
+      .from('conversation_participants')
+      .insert({ conversation_id: conversation.id, user_id: driverId })
+
+    if (partError) throw partError
+
+    driverIdToConversationId.set(driverId, conversation.id)
+  }
+
+  const messagesToInsert = Array.from(driverIdToConversationId.values()).map((conversationId) => ({
+    conversation_id: conversationId,
+    sender_id: userId,
+    content,
+  }))
+
+  const { error: insertError } = await supabase.from('messages').insert(messagesToInsert)
+
+  if (insertError) throw insertError
+
+  return { sentTo: messagesToInsert.length }
+}
+
+export async function getDispatchConversations() {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: conversations, error } = await supabase
+    .from('conversations')
+    .select(`
+      id,
+      created_at,
+      conversation_participants(user_id, users(first_name, last_name)),
+      messages(content, created_at, sender_id)
+    `)
+    .eq('type', 'dispatch')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  return (conversations || []).map((c: any) => {
+    const driverParticipant = c.conversation_participants?.[0]
+    const sortedMessages = [...(c.messages || [])].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+    const lastMessage = sortedMessages[0]
+
+    return {
+      id: c.id,
+      driverName: driverParticipant?.users
+        ? `${driverParticipant.users.first_name || ''} ${driverParticipant.users.last_name || ''}`.trim()
+        : 'Unknown Driver',
+      driverId: driverParticipant?.user_id,
+      lastMessage: lastMessage?.content || null,
+      lastMessageAt: lastMessage?.created_at || c.created_at,
+    }
+  })
+}
+
+export async function getAnnouncements() {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function createAnnouncement(input: {
+  message: string
+  severity: 'info' | 'warning' | 'critical'
+  audience: 'all' | 'admin' | 'driver' | 'pharmacy'
+  expiresAt?: string | null
+}) {
+  const { role, userId } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('announcements')
+    .insert({
+      message: input.message,
+      severity: input.severity,
+      audience: input.audience,
+      expires_at: input.expiresAt || null,
+      created_by: userId,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateAnnouncement(
+  announcementId: string,
+  updates: { message?: string; severity?: string; audience?: string; isActive?: boolean; expiresAt?: string | null },
+) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('announcements')
+    .update({
+      ...(updates.message !== undefined && { message: updates.message }),
+      ...(updates.severity !== undefined && { severity: updates.severity }),
+      ...(updates.audience !== undefined && { audience: updates.audience }),
+      ...(updates.isActive !== undefined && { is_active: updates.isActive }),
+      ...(updates.expiresAt !== undefined && { expires_at: updates.expiresAt }),
+    })
+    .eq('id', announcementId)
+
+  if (error) throw error
+}
+
+export async function deleteAnnouncement(announcementId: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('announcements').delete().eq('id', announcementId)
+
+  if (error) throw error
 }
