@@ -1,18 +1,24 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { MessageSquare, Megaphone } from "lucide-react"
+import { MessageSquare, Megaphone, MessageSquarePlus } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { ChatPanel } from "@/components/chat-panel"
 import { createClient } from "@/lib/supabase/client"
-import { isDriverToDriverMessagingEnabled, setDriverToDriverMessagingEnabled, markConversationReadAsAdmin } from "@/lib/messaging"
+import {
+  isDriverToDriverMessagingEnabled,
+  setDriverToDriverMessagingEnabled,
+  markConversationReadAsAdmin,
+  getOrCreateDispatchConversation,
+} from "@/lib/messaging"
 import { useToast } from "@/hooks/use-toast"
 
 export default function MessagesPage() {
@@ -25,6 +31,10 @@ export default function MessagesPage() {
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false)
   const [broadcastMessage, setBroadcastMessage] = useState("")
   const [isSendingBroadcast, setIsSendingBroadcast] = useState(false)
+  const [isNewMessageOpen, setIsNewMessageOpen] = useState(false)
+  const [allDrivers, setAllDrivers] = useState<{ id: string; first_name: string; last_name: string }[]>([])
+  const [selectedNewDriverId, setSelectedNewDriverId] = useState("")
+  const [isStartingConversation, setIsStartingConversation] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -45,6 +55,14 @@ export default function MessagesPage() {
 
     const enabled = await isDriverToDriverMessagingEnabled()
     setDirectMessagingEnabled(enabled)
+
+    try {
+      const { getUsers } = await import("@/app/actions/data-actions")
+      const users = await getUsers()
+      setAllDrivers(users.filter((u: any) => u.role === "driver"))
+    } catch {
+      // Non-critical - the New Message picker just won't have options yet
+    }
 
     await fetchConversations()
     setLoading(false)
@@ -106,14 +124,39 @@ export default function MessagesPage() {
     }
   }
 
+  const handleStartConversation = async () => {
+    if (!selectedNewDriverId) return
+
+    setIsStartingConversation(true)
+    try {
+      const conversationId = await getOrCreateDispatchConversation(selectedNewDriverId)
+      await fetchConversations()
+      setSelectedConversationId(conversationId)
+      setIsNewMessageOpen(false)
+      setSelectedNewDriverId("")
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start conversation",
+        variant: "destructive",
+      })
+    } finally {
+      setIsStartingConversation(false)
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <AdminHeader title="Messages" />
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="flex justify-end mb-4">
-            <Button onClick={() => setIsBroadcastOpen(true)}>
+          <div className="flex justify-end gap-2 mb-4">
+            <Button onClick={() => setIsNewMessageOpen(true)}>
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              New Message
+            </Button>
+            <Button variant="outline" onClick={() => setIsBroadcastOpen(true)}>
               <Megaphone className="mr-2 h-4 w-4" />
               Message All Drivers
             </Button>
@@ -218,6 +261,49 @@ export default function MessagesPage() {
               disabled={isSendingBroadcast || !broadcastMessage.trim()}
             >
               {isSendingBroadcast ? "Sending..." : "Send to All Drivers"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewMessageOpen} onOpenChange={setIsNewMessageOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Message</DialogTitle>
+          </DialogHeader>
+          <Label>Driver</Label>
+          <Select value={selectedNewDriverId} onValueChange={setSelectedNewDriverId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a driver" />
+            </SelectTrigger>
+            <SelectContent>
+              {allDrivers.map((driver) => (
+                <SelectItem key={driver.id} value={driver.id}>
+                  {driver.first_name} {driver.last_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground -mt-2">
+            This opens (or creates) that driver's dispatch conversation, same as if they'd messaged you first.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 bg-transparent"
+              onClick={() => setIsNewMessageOpen(false)}
+              disabled={isStartingConversation}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleStartConversation}
+              disabled={isStartingConversation || !selectedNewDriverId}
+            >
+              {isStartingConversation ? "Starting..." : "Start Conversation"}
             </Button>
           </div>
         </DialogContent>
