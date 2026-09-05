@@ -97,7 +97,7 @@ export async function getRoutes() {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('routes')
-    .select('*, route_stops(*)')
+    .select('*, route_stops(*, pharmacies(name, address, latitude, longitude))')
     .order('created_at', { ascending: false })
   
   if (error) throw error

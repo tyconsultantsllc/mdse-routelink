@@ -34,7 +34,7 @@ export default function RouteManagement() {
   const [assignModalOpen, setAssignModalOpen] = useState(false)
   const [selectedRoute, setSelectedRoute] = useState<{ id: number; name: string; driver?: string } | null>(null)
   const [deleteConfirmRoute, setDeleteConfirmRoute] = useState<{ id: number; name: string } | null>(null)
-  const [highlightedRouteId, setHighlightedRouteId] = useState<number | null>(null)
+  const [highlightedRouteId, setHighlightedRouteId] = useState<string | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
 
   const { toast } = useToast()
@@ -150,18 +150,29 @@ export default function RouteManagement() {
 
   const confirmDelete = async () => {
     if (deleteConfirmRoute) {
-      toast({
-        title: "Route Deleted",
-        description: `${deleteConfirmRoute.name} has been removed from the system`,
-        variant: "destructive",
-      })
-      fetchRoutes()
-      setDeleteConfirmRoute(null)
+      try {
+        const { deleteRoute } = await import("@/app/actions/data-actions")
+        await deleteRoute(deleteConfirmRoute.id)
+
+        toast({
+          title: "Route Deleted",
+          description: `${deleteConfirmRoute.name} has been removed from the system`,
+          variant: "destructive",
+        })
+        fetchRoutes()
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to delete route",
+          variant: "destructive",
+        })
+      } finally {
+        setDeleteConfirmRoute(null)
+      }
     }
   }
 
-  const handleViewOnMap = (routeId: number, routeName: string) => {
-    console.log(`[v0] Viewing route ${routeId} on map: ${routeName}`)
+  const handleViewOnMap = (routeId: string, routeName: string) => {
     setHighlightedRouteId(routeId)
     mapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
     toast({
