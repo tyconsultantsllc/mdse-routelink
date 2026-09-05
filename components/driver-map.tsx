@@ -16,6 +16,7 @@ export default function DriverMap({ center }: DriverMapProps) {
   const [pathCoords, setPathCoords] = useState<[number, number][]>([])
   const [speed, setSpeed] = useState(0)
   const [heading, setHeading] = useState(0)
+  const lastUpdateTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -112,10 +113,28 @@ export default function DriverMap({ center }: DriverMapProps) {
       const newPos = L.latLng(center.lat, center.lng)
 
       const distance = oldPos.distanceTo(newPos) // meters
+      const now = Date.now()
+      const isFirstRealUpdate = lastUpdateTimeRef.current === null
 
       if (distance < 10) return
 
-      const calculatedSpeed = Math.round((distance / 30) * 2.237)
+      // The marker starts at a fallback default position before the first
+      // real GPS reading arrives. That first update is the marker snapping
+      // away from a fake starting point, not real movement - treating it as
+      // "distance traveled in 30 seconds" produced physically impossible
+      // speeds (e.g. 180,000+ mph) whenever the real position was far from
+      // the fallback. Skip speed/heading for that one jump, then start
+      // timing real elapsed time between updates from here on.
+      if (isFirstRealUpdate) {
+        lastUpdateTimeRef.current = now
+        markerRef.current.setLatLng([center.lat, center.lng])
+        return
+      }
+
+      const elapsedSeconds = Math.max((now - lastUpdateTimeRef.current!) / 1000, 1)
+      lastUpdateTimeRef.current = now
+
+      const calculatedSpeed = Math.round((distance / elapsedSeconds) * 2.237)
       setSpeed(calculatedSpeed)
 
       const lat1 = (oldPos.lat * Math.PI) / 180
