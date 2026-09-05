@@ -47,23 +47,30 @@ export default function Reports() {
   }
 
   const totalDeliveries = stats?.logs?.length || 0
-  const onTimeRate = 0 // Would need actual on-time data
-  const avgDeliveryTime = 0 // Would need actual time data
+  const failedDeliveries = stats?.logs?.filter((log: any) => log.action === 'failed').length || 0
+  const successfulDeliveries = stats?.logs?.filter((log: any) => log.action === 'delivered').length || 0
+  // onTimeRate and avgDeliveryTime need a defined "on time" threshold that
+  // doesn't exist in the data model yet (e.g. comparing actual_delivery_time
+  // against an expected window) - left as 0 rather than inventing a number
+  const onTimeRate = 0
+  const avgDeliveryTime = 0
 
-  const deliveriesData = [
-    { month: "Jan", deliveries: 0 },
-    { month: "Feb", deliveries: 0 },
-    { month: "Mar", deliveries: 0 },
-    { month: "Apr", deliveries: 0 },
-    { month: "May", deliveries: 0 },
-    { month: "Jun", deliveries: 0 },
-    { month: "Jul", deliveries: totalDeliveries },
-  ]
+  // Real month-by-month counts from actual delivery log timestamps, instead
+  // of hardcoded zeros with all volume dumped into a single fake month
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const now = new Date()
+  const deliveriesData = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1)
+    const count = (stats?.logs || []).filter((log: any) => {
+      const logDate = new Date(log.timestamp)
+      return logDate.getFullYear() === d.getFullYear() && logDate.getMonth() === d.getMonth()
+    }).length
+    return { month: monthNames[d.getMonth()], deliveries: count }
+  })
 
   const statusData = [
-    { name: "On Time", value: totalDeliveries, color: "#10b981" },
-    { name: "Delayed", value: 0, color: "#f59e0b" },
-    { name: "Failed", value: 0, color: "#ef4444" },
+    { name: "Delivered", value: successfulDeliveries, color: "#10b981" },
+    { name: "Failed", value: failedDeliveries, color: "#ef4444" },
   ]
 
   const driversData = stats?.users

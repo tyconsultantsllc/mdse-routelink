@@ -1,15 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, Megaphone } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { ChatPanel } from "@/components/chat-panel"
 import { createClient } from "@/lib/supabase/client"
-import { isDriverToDriverMessagingEnabled, setDriverToDriverMessagingEnabled } from "@/lib/messaging"
+import { isDriverToDriverMessagingEnabled, setDriverToDriverMessagingEnabled, markConversationReadAsAdmin } from "@/lib/messaging"
 import { useToast } from "@/hooks/use-toast"
 
 export default function MessagesPage() {
@@ -19,6 +22,9 @@ export default function MessagesPage() {
   const [adminId, setAdminId] = useState<string>("")
   const [adminName, setAdminName] = useState("")
   const [loading, setLoading] = useState(true)
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false)
+  const [broadcastMessage, setBroadcastMessage] = useState("")
+  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -74,12 +80,45 @@ export default function MessagesPage() {
     }
   }
 
+  const handleSendBroadcast = async () => {
+    if (!broadcastMessage.trim()) return
+
+    setIsSendingBroadcast(true)
+    try {
+      const { broadcastMessageToAllDrivers } = await import("@/app/actions/data-actions")
+      const result = await broadcastMessageToAllDrivers(broadcastMessage.trim())
+
+      toast({
+        title: "Message sent",
+        description: `Delivered to ${result.sentTo} driver${result.sentTo === 1 ? "" : "s"}`,
+      })
+      setBroadcastMessage("")
+      setIsBroadcastOpen(false)
+      fetchConversations()
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send broadcast",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingBroadcast(false)
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <AdminHeader title="Messages" />
         <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex justify-end mb-4">
+            <Button onClick={() => setIsBroadcastOpen(true)}>
+              <Megaphone className="mr-2 h-4 w-4" />
+              Message All Drivers
+            </Button>
+          </div>
+
           <Card className="p-4 mb-6 flex items-center justify-between">
             <div>
               <Label htmlFor="direct-messaging-toggle" className="text-sm font-medium">
@@ -108,12 +147,24 @@ export default function MessagesPage() {
                   {conversations.map((c) => (
                     <button
                       key={c.id}
-                      onClick={() => setSelectedConversationId(c.id)}
+                      onClick={() => {
+                        setSelectedConversationId(c.id)
+                        if (c.unreadCount > 0) {
+                          markConversationReadAsAdmin(c.id, adminId).then(fetchConversations)
+                        }
+                      }}
                       className={`w-full text-left p-3 hover:bg-muted transition-colors ${
                         selectedConversationId === c.id ? "bg-muted" : ""
                       }`}
                     >
-                      <p className="font-medium text-sm">{c.driverName}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-sm">{c.driverName}</p>
+                        {c.unreadCount > 0 && (
+                          <span className="bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center shrink-0">
+                            {c.unreadCount > 9 ? "9+" : c.unreadCount}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">{c.lastMessage || "No messages yet"}</p>
                     </button>
                   ))}
@@ -134,6 +185,43 @@ export default function MessagesPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isBroadcastOpen} onOpenChange={setIsBroadcastOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Message All Drivers</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-2">
+            This sends one message into each driver's own dispatch conversation. Their replies come back to you
+            individually — drivers won't see each other's responses.
+          </p>
+          <Textarea
+            placeholder="e.g. Reminder: submit your delivery logs by end of day"
+            value={broadcastMessage}
+            onChange={(e) => setBroadcastMessage(e.target.value)}
+            rows={4}
+          />
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 bg-transparent"
+              onClick={() => setIsBroadcastOpen(false)}
+              disabled={isSendingBroadcast}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleSendBroadcast}
+              disabled={isSendingBroadcast || !broadcastMessage.trim()}
+            >
+              {isSendingBroadcast ? "Sending..." : "Send to All Drivers"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

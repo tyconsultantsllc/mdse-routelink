@@ -606,7 +606,7 @@ export async function broadcastMessageToAllDrivers(content: string) {
 }
 
 export async function getDispatchConversations() {
-  const { role } = await verifyAuth()
+  const { role, userId } = await verifyAuth()
 
   if (role !== 'admin') {
     throw new Error('Forbidden: Admin access required')
@@ -627,12 +627,24 @@ export async function getDispatchConversations() {
 
   if (error) throw error
 
+  const { data: readRows } = await supabase
+    .from('admin_message_reads')
+    .select('conversation_id, last_read_at')
+    .eq('admin_id', userId)
+
+  const lastReadByConversation = new Map((readRows || []).map((r) => [r.conversation_id, r.last_read_at]))
+
   return (conversations || []).map((c: any) => {
     const driverParticipant = c.conversation_participants?.[0]
     const sortedMessages = [...(c.messages || [])].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     )
     const lastMessage = sortedMessages[0]
+    const lastReadAt = lastReadByConversation.get(c.id)
+
+    const unreadCount = (c.messages || []).filter(
+      (m: any) => m.sender_id !== userId && (!lastReadAt || new Date(m.created_at) > new Date(lastReadAt)),
+    ).length
 
     return {
       id: c.id,
@@ -642,6 +654,7 @@ export async function getDispatchConversations() {
       driverId: driverParticipant?.user_id,
       lastMessage: lastMessage?.content || null,
       lastMessageAt: lastMessage?.created_at || c.created_at,
+      unreadCount,
     }
   })
 }

@@ -20,7 +20,6 @@ interface ExportDialogProps {
 export function ExportDialog({ open, onOpenChange, reportType, data }: ExportDialogProps) {
   const { toast } = useToast()
   const [format, setFormat] = useState("pdf")
-  const [includeCharts, setIncludeCharts] = useState(true)
   const [includeSummary, setIncludeSummary] = useState(true)
 
   const handleExport = () => {
@@ -167,16 +166,6 @@ export function ExportDialog({ open, onOpenChange, reportType, data }: ExportDia
                   />
                   <Label htmlFor="summary" className="text-sm font-normal cursor-pointer">
                     Include summary statistics
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="charts"
-                    checked={includeCharts}
-                    onCheckedChange={(checked) => setIncludeCharts(checked as boolean)}
-                  />
-                  <Label htmlFor="charts" className="text-sm font-normal cursor-pointer">
-                    Include charts and graphs
                   </Label>
                 </div>
               </div>

@@ -158,3 +158,63 @@ export async function getOtherDrivers(currentDriverId: string) {
   if (error) throw error
   return data || []
 }
+
+export async function markConversationRead(conversationId: string, userId: string) {
+  const supabase = createClient()
+
+  const { error } = await supabase
+    .from("conversation_participants")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+
+  if (error) throw error
+}
+
+export async function markConversationReadAsAdmin(conversationId: string, adminId: string) {
+  const supabase = createClient()
+
+  const { error } = await supabase.from("admin_message_reads").upsert(
+    {
+      admin_id: adminId,
+      conversation_id: conversationId,
+      last_read_at: new Date().toISOString(),
+    },
+    { onConflict: "admin_id,conversation_id" },
+  )
+
+  if (error) throw error
+}
+
+/**
+ * Total unread messages across all of a driver's conversations (dispatch +
+ * any direct ones), for the badge on the floating message button.
+ */
+export async function getUnreadCountForDriver(driverId: string): Promise<number> {
+  const supabase = createClient()
+
+  const { data: participantRows } = await supabase
+    .from("conversation_participants")
+    .select("conversation_id, last_read_at")
+    .eq("user_id", driverId)
+
+  if (!participantRows || participantRows.length === 0) return 0
+
+  let total = 0
+  for (const row of participantRows) {
+    let query = supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", row.conversation_id)
+      .neq("sender_id", driverId)
+
+    if (row.last_read_at) {
+      query = query.gt("created_at", row.last_read_at)
+    }
+
+    const { count } = await query
+    total += count || 0
+  }
+
+  return total
+}

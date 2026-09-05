@@ -11,6 +11,8 @@ import {
   getOrCreateDirectConversation,
   isDriverToDriverMessagingEnabled,
   getOtherDrivers,
+  getUnreadCountForDriver,
+  markConversationRead,
 } from "@/lib/messaging"
 
 interface DriverMessagingWidgetProps {
@@ -23,9 +25,19 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
   const [dispatchConversationId, setDispatchConversationId] = useState<string | null>(null)
   const [directMessagingEnabled, setDirectMessagingEnabled] = useState(false)
   const [otherDrivers, setOtherDrivers] = useState<{ id: string; first_name: string; last_name: string }[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const [activeView, setActiveView] = useState<{ type: "dispatch" } | { type: "driver"; conversationId: string; name: string }>({
     type: "dispatch",
   })
+
+  useEffect(() => {
+    const checkUnread = () => {
+      getUnreadCountForDriver(driverId).then(setUnreadCount).catch(() => {})
+    }
+    checkUnread()
+    const interval = setInterval(checkUnread, 15000)
+    return () => clearInterval(interval)
+  }, [driverId])
 
   useEffect(() => {
     const init = async () => {
@@ -45,7 +57,10 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
 
   useEffect(() => {
     if (!isOpen) return
-    getOrCreateDispatchConversation(driverId).then(setDispatchConversationId)
+    getOrCreateDispatchConversation(driverId).then((id) => {
+      setDispatchConversationId(id)
+      markConversationRead(id, driverId).then(() => setUnreadCount(0))
+    })
   }, [isOpen, driverId])
 
   const handleOpenDriverChat = async (otherDriver: { id: string; first_name: string; last_name: string }) => {
@@ -54,6 +69,9 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
       type: "driver",
       conversationId,
       name: `${otherDriver.first_name} ${otherDriver.last_name}`.trim(),
+    })
+    markConversationRead(conversationId, driverId).then(() => {
+      getUnreadCountForDriver(driverId).then(setUnreadCount)
     })
   }
 
@@ -65,6 +83,11 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
         className="fixed bottom-20 right-4 md:bottom-6 h-14 w-14 rounded-full shadow-lg z-30"
       >
         <MessageCircle className="h-6 w-6" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
