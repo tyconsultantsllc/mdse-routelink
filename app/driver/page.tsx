@@ -108,7 +108,7 @@ export default function DriverTrackingPage() {
               pharmacyId: stop.pharmacy_id,
               pharmacyName: stop.pharmacies?.name || "Unknown Pharmacy",
               pickupAddress: stop.pharmacies?.address || "N/A",
-              dropoffAddress: stop.delivery_address || "N/A",
+              dropoffAddress: stop.dropoff_address || "N/A",
               estimatedTime: stop.estimated_time || 30,
               // DB uses pending/picked_up/delivered/failed; UI uses pending/in-progress/completed/failed
               status:

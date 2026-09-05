@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
+import { AnnouncementBanner } from "@/components/announcement-banner"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
@@ -64,7 +65,7 @@ export default function PharmacyDashboard() {
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
         .from("route_stops")
-        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address)")
+        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude)")
         .eq("pharmacy_id", pharmacyUser.pharmacy_id)
         .order("created_at", { ascending: false })
 
@@ -82,14 +83,16 @@ export default function PharmacyDashboard() {
               ? `${stop.routes.drivers.users?.first_name} ${stop.routes.drivers.users?.last_name}`
               : "Unassigned",
             stops: [],
-            startTime: stop.routes?.scheduled_start
-              ? new Date(stop.routes.scheduled_start).toLocaleTimeString("en-US", {
+            // Fixed: routes has start_time/end_time, not scheduled_start/scheduled_end
+            // (those columns don't exist - this always showed "N/A" before)
+            startTime: stop.routes?.start_time
+              ? new Date(stop.routes.start_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
               : "N/A",
-            endTime: stop.routes?.scheduled_end
-              ? new Date(stop.routes.scheduled_end).toLocaleTimeString("en-US", {
+            endTime: stop.routes?.end_time
+              ? new Date(stop.routes.end_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
@@ -97,9 +100,11 @@ export default function PharmacyDashboard() {
             estimatedDuration: stop.estimated_time || 30,
             priority: stop.routes?.priority || "medium",
             status: stop.routes?.status || "pending",
-            totalDistance: stop.routes?.total_distance || 0,
+            // total_distance was never a real column on routes - removed rather
+            // than silently showing a number that was always undefined
             createdAt: stop.created_at,
-            completedAt: stop.routes?.completed_at,
+            // Fixed: actual_end_time is the real column, not completed_at
+            completedAt: stop.routes?.actual_end_time,
           })
         }
 
@@ -108,18 +113,51 @@ export default function PharmacyDashboard() {
           pharmacyId: stop.pharmacy_id,
           pharmacyName: stop.pharmacies?.name || "Unknown Pharmacy",
           pickupAddress: stop.pharmacies?.address || "N/A",
-          dropoffAddress: stop.delivery_address || "N/A",
+          // Fixed: the real column is dropoff_address, not delivery_address -
+          // this always showed "N/A" to pharmacies before, same bug as the driver page
+          dropoffAddress: stop.dropoff_address || "N/A",
           estimatedTime: stop.estimated_time || 30,
-          sequence: stop.sequence_order,
+          // Fixed: the real column is stop_order, not sequence_order
+          sequence: stop.stop_order,
           status: stop.status || "pending",
+          // Real pharmacy coordinates (seeded pharmacies have these); dropoff
+          // coordinates get filled in below via geocoding, since delivery
+          // addresses are free text with no stored coordinates
           coordinates: {
-            pickup: { lat: 33.7175, lng: -117.8311 },
-            dropoff: { lat: 33.6846, lng: -117.8265 },
+            pickup: {
+              lat: stop.pharmacies?.latitude || 33.7175,
+              lng: stop.pharmacies?.longitude || -117.8311,
+            },
+            dropoff: null as { lat: number; lng: number } | null,
           },
+          dropoffAddressRaw: stop.dropoff_address,
         })
       })
 
-      setDeliveries(Array.from(groupedRoutes.values()))
+      const routesArray = Array.from(groupedRoutes.values())
+
+      // Geocode each stop's dropoff address. Previously every single stop
+      // showed the exact same hardcoded coordinates regardless of the real
+      // delivery address - the map was showing fiction, not data.
+      const { geocodeAddress } = await import("@/lib/geocode")
+      for (const route of routesArray) {
+        for (const stop of route.stops) {
+          if (stop.dropoffAddressRaw) {
+            const coords = await geocodeAddress(stop.dropoffAddressRaw)
+            if (coords) {
+              stop.coordinates.dropoff = { lat: coords.lat, lng: coords.lng }
+            }
+          }
+          if (!stop.coordinates.dropoff) {
+            // Fallback if geocoding fails - same point as pickup rather than
+            // a fixed unrelated location, so it's at least in the right area
+            stop.coordinates.dropoff = { ...stop.coordinates.pickup }
+          }
+          delete stop.dropoffAddressRaw
+        }
+      }
+
+      setDeliveries(routesArray)
     } catch (error) {
       console.error("Error fetching pharmacy deliveries:", error)
     } finally {
@@ -127,7 +165,9 @@ export default function PharmacyDashboard() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
     if (typeof window !== "undefined") {
       localStorage.removeItem("userRole")
       localStorage.removeItem("userName")
@@ -232,6 +272,8 @@ export default function PharmacyDashboard() {
           </div>
         </header>
 
+        <AnnouncementBanner />
+
         <div className="p-3 md:p-6 space-y-4 md:space-y-6">
           {/* Stats - Mobile optimized grid */}
           <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
@@ -264,7 +306,7 @@ export default function PharmacyDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{avgDeliveryTime} min</div>
-                <p className="text-xs text-muted-foreground">5% faster than last week</p>
+                <p className="text-xs text-muted-foreground">Based on completed deliveries</p>
               </CardContent>
             </Card>
           </div>
