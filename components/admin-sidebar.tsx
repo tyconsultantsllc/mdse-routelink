@@ -17,6 +17,8 @@ import {
   TrendingUp,
   CalendarIcon,
   Settings,
+  Megaphone,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,7 +32,9 @@ const navigation = [
   { name: "Drivers", href: "/admin/drivers", icon: Users },
   { name: "Routes", href: "/admin/routes", icon: MapIcon },
   { name: "Calendar", href: "/admin/calendar", icon: CalendarIcon },
+  { name: "Messages", href: "/admin/messages", icon: MessageSquare },
   { name: "Delivery Logs", href: "/admin/logs", icon: Clock },
+  { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
   { name: "Reports", href: "/admin/reports", icon: BarChart2 },
   { name: "Performance", href: "/admin/performance", icon: TrendingUp },
   { name: "Settings", href: "/admin/settings", icon: Settings },

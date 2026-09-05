@@ -12,6 +12,8 @@ import dynamic from "next/dynamic"
 import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
 import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation } from "@/lib/driver-actions"
+import { AnnouncementBanner } from "@/components/announcement-banner"
+import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -366,6 +368,8 @@ export default function DriverTrackingPage() {
         </div>
       </nav>
 
+      <AnnouncementBanner />
+
       <main>
         <div className="max-w-7xl mx-auto py-3 md:py-6 px-3 md:px-6 lg:px-8">
           <div className="space-y-4 md:space-y-6">
@@ -625,6 +629,8 @@ export default function DriverTrackingPage() {
         pharmacyName={selectedStop?.pharmacyName || ""}
         onConfirm={handleDeliveryConfirmed}
       />
+
+      {driverId && <DriverMessagingWidget driverId={driverId} />}
     </div>
   )
 }
