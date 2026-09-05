@@ -1,20 +1,23 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, MapIcon, Trash2 } from 'lucide-react'
+import { Plus, Edit, MapIcon, Trash2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
-import { AddDriverModal } from "@/components/add-driver-modal"
+import { AddUserModal } from "@/components/add-user-modal"
+import { EditUserModal } from "@/components/edit-user-modal"
+import { DriverLocationModal } from "@/components/driver-location-modal"
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getUsers } from "@/app/actions/data-actions"
 
 export default function DriverManagement() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [editingDriver, setEditingDriver] = useState<any>(null)
+  const [viewingLocationDriver, setViewingLocationDriver] = useState<any>(null)
   const { toast } = useToast()
   const [drivers, setDrivers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,25 +29,8 @@ export default function DriverManagement() {
   const fetchDrivers = async () => {
     try {
       const usersData = await getUsers()
-      
-      // Filter for driver users
       const driverUsers = usersData.filter((u: any) => u.role === "driver")
-      
-      const driversWithDetails = driverUsers.map((user: any) => ({
-        id: user.id,
-        user: {
-          first_name: user.first_name,
-          last_name: user.last_name,
-          email: user.email
-        },
-        phone: user.phone,
-        vehicle_type: user.vehicle_type,
-        vehicle_plate: user.vehicle_plate,
-        license_number: user.license_number,
-        status: user.status || "inactive",
-      }))
-
-      setDrivers(driversWithDetails)
+      setDrivers(driverUsers)
     } catch (error) {
       console.error("Error fetching drivers:", error)
       toast({
@@ -57,26 +43,25 @@ export default function DriverManagement() {
     }
   }
 
-  const handleEditDriver = (driverId: string, driverName: string) => {
-    toast({
-      title: "Edit Driver",
-      description: `Opening editor for ${driverName}`,
-    })
-  }
-
   const handleDeleteDriver = async (driverId: string, driverName: string) => {
-    toast({
-      title: "Driver Removed",
-      description: `${driverName} has been removed from the system`,
-    })
-    fetchDrivers()
-  }
+    if (!confirm(`Are you sure you want to delete ${driverName}? This cannot be undone.`)) return
 
-  const handleViewOnMap = (driverId: string, driverName: string) => {
-    toast({
-      title: "View on Map",
-      description: `Showing current location of ${driverName}`,
-    })
+    try {
+      const { deleteUser } = await import("@/app/actions/data-actions")
+      await deleteUser(driverId)
+
+      toast({
+        title: "Driver Removed",
+        description: `${driverName} has been removed from the system`,
+      })
+      fetchDrivers()
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete driver",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -90,7 +75,7 @@ export default function DriverManagement() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-foreground">Registered Drivers</h2>
-              <Button onClick={() => setIsModalOpen(true)}>
+              <Button onClick={() => setIsAddModalOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Driver
               </Button>
@@ -127,95 +112,76 @@ export default function DriverManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
-                    {drivers.map((driver) => (
-                      <tr key={driver.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage
-                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`}
-                              />
-                              <AvatarFallback>
-                                {driver.user?.first_name?.[0]}
-                                {driver.user?.last_name?.[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-foreground">
-                                {driver.user?.first_name} {driver.user?.last_name}
+                    {drivers.map((driver) => {
+                      const driverDetails = driver.drivers?.[0]
+                      const driverName = `${driver.first_name || ""} ${driver.last_name || ""}`.trim()
+                      return (
+                        <tr key={driver.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`} />
+                                <AvatarFallback>
+                                  {driver.first_name?.[0]}
+                                  {driver.last_name?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-foreground">{driverName}</div>
+                                <div className="text-sm text-muted-foreground">Driver</div>
                               </div>
-                              <div className="text-sm text-muted-foreground">Driver</div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-foreground">{driver.phone || "N/A"}</div>
-                          <div className="text-sm text-muted-foreground">{driver.user?.email}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-foreground">{driver.vehicle_type || "N/A"}</div>
-                          <div className="text-sm text-muted-foreground">{driver.vehicle_plate || "N/A"}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-foreground">{driver.license_number || "N/A"}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="mr-2"
-                                onClick={() =>
-                                  handleEditDriver(
-                                    driver.id,
-                                    `${driver.user?.first_name} ${driver.user?.last_name}`
-                                  )
-                                }
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Edit driver details</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="mr-2"
-                                onClick={() =>
-                                  handleViewOnMap(
-                                    driver.id,
-                                    `${driver.user?.first_name} ${driver.user?.last_name}`
-                                  )
-                                }
-                              >
-                                <MapIcon className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>View on map</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() =>
-                                  handleDeleteDriver(
-                                    driver.id,
-                                    `${driver.user?.first_name} ${driver.user?.last_name}`
-                                  )
-                                }
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete driver</TooltipContent>
-                          </Tooltip>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-foreground">{driver.phone || "N/A"}</div>
+                            <div className="text-sm text-muted-foreground">{driver.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-foreground">{driverDetails?.vehicle_type || "N/A"}</div>
+                            <div className="text-sm text-muted-foreground">{driverDetails?.vehicle_plate || "N/A"}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-foreground">{driverDetails?.license_number || "N/A"}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="mr-2"
+                                  onClick={() => setEditingDriver(driver)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit driver details</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="mr-2"
+                                  onClick={() => setViewingLocationDriver(driver)}
+                                >
+                                  <MapIcon className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View on map</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => handleDeleteDriver(driver.id, driverName)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete driver</TooltipContent>
+                            </Tooltip>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </Card>
@@ -223,7 +189,25 @@ export default function DriverManagement() {
           </div>
         </div>
 
-        <AddDriverModal open={isModalOpen} onOpenChange={setIsModalOpen} />
+        <AddUserModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={fetchDrivers} />
+
+        <EditUserModal
+          isOpen={!!editingDriver}
+          onClose={() => setEditingDriver(null)}
+          user={editingDriver}
+          onSuccess={fetchDrivers}
+        />
+
+        {viewingLocationDriver && (
+          <DriverLocationModal
+            open={!!viewingLocationDriver}
+            onOpenChange={(open) => !open && setViewingLocationDriver(null)}
+            driverName={`${viewingLocationDriver.first_name || ""} ${viewingLocationDriver.last_name || ""}`.trim()}
+            latitude={viewingLocationDriver.drivers?.[0]?.current_latitude ?? null}
+            longitude={viewingLocationDriver.drivers?.[0]?.current_longitude ?? null}
+            lastUpdate={viewingLocationDriver.drivers?.[0]?.last_location_update ?? null}
+          />
+        )}
       </div>
     </TooltipProvider>
   )

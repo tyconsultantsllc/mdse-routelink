@@ -29,6 +29,27 @@ export async function uploadSignature(driverId: string, stopId: number, signatur
   return path
 }
 
+export async function uploadDeliveryPhotos(driverId: string, stopId: number, photoDataUrls: string[]): Promise<string[]> {
+  const supabase = createClient()
+
+  const paths = await Promise.all(
+    photoDataUrls.map(async (dataUrl, index) => {
+      const blob = await dataUrlToBlob(dataUrl)
+      const path = `${driverId}/${stopId}-photo-${Date.now()}-${index}.jpg`
+
+      const { error } = await supabase.storage.from("proof-of-delivery").upload(path, blob, {
+        contentType: "image/jpeg",
+        upsert: true,
+      })
+
+      if (error) throw new Error(`Photo upload failed: ${error.message}`)
+      return path
+    }),
+  )
+
+  return paths
+}
+
 export async function getSignedUrl(path: string, expiresInSeconds = 3600) {
   const supabase = createClient()
   const { data, error } = await supabase.storage.from("proof-of-delivery").createSignedUrl(path, expiresInSeconds)
@@ -44,12 +65,18 @@ interface ConfirmDeliveryParams {
   recipientName: string
   notes: string
   signatureDataUrl: string
+  photos?: string[]
 }
 
 export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
   const supabase = createClient()
 
   const signaturePath = await uploadSignature(params.driverId, params.stopId, params.signatureDataUrl)
+
+  const photoPaths =
+    params.photos && params.photos.length > 0
+      ? await uploadDeliveryPhotos(params.driverId, params.stopId, params.photos)
+      : []
 
   const { error: stopError } = await supabase
     .from("route_stops")
@@ -58,6 +85,7 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
       actual_delivery_time: new Date().toISOString(),
       recipient_name: params.recipientName,
       signature_path: signaturePath,
+      photo_paths: photoPaths,
       notes: params.notes || null,
     })
     .eq("id", params.stopId)
@@ -77,7 +105,38 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
   // roll that back or block the driver, but it should surface somewhere.
   if (logError) console.error("Delivery log insert failed:", logError.message)
 
-  return { signaturePath }
+  return { signaturePath, photoPaths }
+}
+
+export async function failDeliveryStop(params: {
+  stopId: number
+  routeId: number
+  pharmacyId: string
+  driverId: string
+  reason: string
+}) {
+  const supabase = createClient()
+
+  const { error: stopError } = await supabase
+    .from("route_stops")
+    .update({
+      status: "failed",
+      notes: params.reason,
+    })
+    .eq("id", params.stopId)
+
+  if (stopError) throw new Error(`Could not record failed delivery: ${stopError.message}`)
+
+  const { error: logError } = await supabase.from("delivery_logs").insert({
+    route_id: params.routeId,
+    route_stop_id: params.stopId,
+    driver_id: params.driverId,
+    pharmacy_id: params.pharmacyId,
+    action: "failed",
+    notes: params.reason,
+  })
+
+  if (logError) console.error("Delivery log insert failed:", logError.message)
 }
 
 export async function completeRoute(routeId: number) {

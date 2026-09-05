@@ -11,9 +11,10 @@ import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
-import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation } from "@/lib/driver-actions"
+import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation, failDeliveryStop } from "@/lib/driver-actions"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
+import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -33,7 +34,8 @@ interface RouteStop {
   estimatedTime: number
   arrival?: string
   departure?: string
-  status: "completed" | "pending" | "in-progress"
+  status: "completed" | "pending" | "in-progress" | "failed"
+  failureReason?: string
 }
 
 interface Route {
@@ -53,6 +55,7 @@ export default function DriverTrackingPage() {
   const [isTracking, setIsTracking] = useState(false)
   const [speed, setSpeed] = useState(0)
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
+  const [failModalOpen, setFailModalOpen] = useState(false)
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null)
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [routes, setRoutes] = useState<Route[]>([])
@@ -107,13 +110,16 @@ export default function DriverTrackingPage() {
               pickupAddress: stop.pharmacies?.address || "N/A",
               dropoffAddress: stop.delivery_address || "N/A",
               estimatedTime: stop.estimated_time || 30,
-              // DB uses pending/picked_up/delivered/failed; UI uses pending/in-progress/completed
+              // DB uses pending/picked_up/delivered/failed; UI uses pending/in-progress/completed/failed
               status:
                 stop.status === "delivered"
                   ? "completed"
                   : stop.status === "picked_up"
                     ? "in-progress"
-                    : "pending",
+                    : stop.status === "failed"
+                      ? "failed"
+                      : "pending",
+              failureReason: stop.status === "failed" ? stop.notes : undefined,
             })) || [],
         })) || []
       )
@@ -133,6 +139,53 @@ export default function DriverTrackingPage() {
     setSelectedRoute(route)
     setSelectedStop(stop)
     setConfirmationModalOpen(true)
+  }
+
+  const handleFailDelivery = (route: Route, stop: RouteStop) => {
+    setSelectedRoute(route)
+    setSelectedStop(stop)
+    setFailModalOpen(true)
+  }
+
+  const handleDeliveryFailed = async (reason: string) => {
+    if (!selectedStop || !selectedRoute || !driverId) return
+
+    try {
+      await failDeliveryStop({
+        stopId: selectedStop.id,
+        routeId: selectedRoute.id,
+        pharmacyId: selectedStop.pharmacyId,
+        driverId,
+        reason,
+      })
+
+      setRoutes((prev) =>
+        prev.map((route) =>
+          route.id === selectedRoute.id
+            ? {
+                ...route,
+                stops: route.stops.map((s) =>
+                  s.id === selectedStop.id ? { ...s, status: "failed" as const, failureReason: reason } : s,
+                ),
+              }
+            : route,
+        ),
+      )
+
+      toast({
+        title: "Delivery Marked Failed",
+        description: `Recorded: ${reason}`,
+      })
+    } catch (error) {
+      console.error("Error recording failed delivery:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to record delivery failure",
+        variant: "destructive",
+      })
+    } finally {
+      setFailModalOpen(false)
+    }
   }
 
   const handleStartStop = async (route: Route, stop: RouteStop) => {
@@ -218,6 +271,7 @@ export default function DriverTrackingPage() {
         recipientName: data.recipientName,
         notes: data.notes,
         signatureDataUrl: data.signature,
+        photos: data.photos,
       })
 
       setRoutes((prev) =>
@@ -470,8 +524,9 @@ export default function DriverTrackingPage() {
                 <div className="space-y-4 md:space-y-6">
                   {routes.map((route) => {
                     const completedStops = route.stops.filter((s) => s.status === "completed").length
+                    const failedStops = route.stops.filter((s) => s.status === "failed").length
                     const totalStops = route.stops.length
-                    const allStopsCompleted = completedStops === totalStops
+                    const allStopsCompleted = completedStops + failedStops === totalStops
                     const hasInProgressStop = route.stops.some((s) => s.status === "in-progress")
                     const nextPendingStop = route.stops.find((s) => s.status === "pending")
 
@@ -534,7 +589,9 @@ export default function DriverTrackingPage() {
                                           ? "bg-green-100 text-green-800 hover:bg-green-100"
                                           : stop.status === "in-progress"
                                             ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
-                                            : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                                            : stop.status === "failed"
+                                              ? "bg-red-100 text-red-800 hover:bg-red-100"
+                                              : "bg-gray-100 text-gray-800 hover:bg-gray-100"
                                       }
                                     >
                                       {stop.status === "in-progress"
@@ -542,6 +599,9 @@ export default function DriverTrackingPage() {
                                         : stop.status.charAt(0).toUpperCase() + stop.status.slice(1)}
                                     </Badge>
                                   </div>
+                                  {stop.status === "failed" && stop.failureReason && (
+                                    <p className="text-xs text-destructive">Reason: {stop.failureReason}</p>
+                                  )}
                                   <div className="text-xs md:text-sm space-y-2">
                                     <div className="flex items-start gap-2">
                                       <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
@@ -581,14 +641,24 @@ export default function DriverTrackingPage() {
                                     </Button>
                                   )}
                                   {stop.status === "in-progress" && (
-                                    <Button
-                                      size="lg"
-                                      onClick={() => handleConfirmDelivery(route, stop)}
-                                      className="min-h-[44px] flex-1 md:flex-none"
-                                    >
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Confirm
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="lg"
+                                        onClick={() => handleConfirmDelivery(route, stop)}
+                                        className="min-h-[44px] flex-1 md:flex-none"
+                                      >
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                        Confirm
+                                      </Button>
+                                      <Button
+                                        size="lg"
+                                        variant="outline"
+                                        onClick={() => handleFailDelivery(route, stop)}
+                                        className="min-h-[44px] flex-1 md:flex-none text-destructive border-destructive hover:bg-destructive/10"
+                                      >
+                                        Mark Failed
+                                      </Button>
+                                    </>
                                   )}
                                   {stop.status === "completed" && (
                                     <div className="flex gap-2">
@@ -628,6 +698,13 @@ export default function DriverTrackingPage() {
         onOpenChange={setConfirmationModalOpen}
         pharmacyName={selectedStop?.pharmacyName || ""}
         onConfirm={handleDeliveryConfirmed}
+      />
+
+      <FailDeliveryModal
+        open={failModalOpen}
+        onOpenChange={setFailModalOpen}
+        pharmacyName={selectedStop?.pharmacyName || ""}
+        onConfirm={handleDeliveryFailed}
       />
 
       {driverId && <DriverMessagingWidget driverId={driverId} />}

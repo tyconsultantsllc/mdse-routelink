@@ -43,6 +43,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  if (user) {
+    const { data: userData } = await supabase.from("users").select("role").eq("id", user.id).single()
+
+    const role = userData?.role
+    const pathname = request.nextUrl.pathname
+
+    const roleHomePage: Record<string, string> = {
+      admin: "/admin",
+      driver: "/driver",
+      pharmacy: "/pharmacy",
+    }
+
+    const isWrongPortal =
+      (pathname.startsWith("/admin") && role !== "admin") ||
+      (pathname.startsWith("/driver") && role !== "driver") ||
+      (pathname.startsWith("/pharmacy") && role !== "pharmacy")
+
+    if (isWrongPortal && role && roleHomePage[role]) {
+      const url = request.nextUrl.clone()
+      url.pathname = roleHomePage[role]
+      return NextResponse.redirect(url)
+    }
+  }
+
   return supabaseResponse
 }
 
