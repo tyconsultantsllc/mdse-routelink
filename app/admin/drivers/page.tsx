@@ -24,6 +24,9 @@ export default function DriverManagement() {
 
   useEffect(() => {
     fetchDrivers()
+
+    const interval = setInterval(fetchDrivers, 15000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchDrivers = async () => {

@@ -50,12 +50,30 @@ export default function AdminDashboard() {
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [routes, setRoutes] = useState<any[]>([])
   const [recentDeliveries, setRecentDeliveries] = useState<any[]>([])
+  const [completedTodayCount, setCompletedTodayCount] = useState(0)
+  const [failedTodayCount, setFailedTodayCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [unassignedRoutes, setUnassignedRoutes] = useState<Route[]>([])
 
   useEffect(() => {
     fetchDashboardData()
+
+    // Poll so the live map actually stays live — without this, driver
+    // positions only ever reflected whatever they were when the page first
+    // loaded, defeating the point of a "live" map.
+    const interval = setInterval(fetchDashboardData, 15000)
+    return () => clearInterval(interval)
   }, [])
+
+  // drivers.status in the database is available/on_break/offline; the map
+  // component expects active/paused/inactive. These were never translated,
+  // so every driver rendered with the wrong color regardless of their
+  // actual status.
+  const mapDriverStatus = (dbStatus: string): "active" | "paused" | "inactive" => {
+    if (dbStatus === "available") return "active"
+    if (dbStatus === "on_break") return "paused"
+    return "inactive"
+  }
 
   const fetchDashboardData = async () => {
     try {
@@ -76,12 +94,16 @@ export default function AdminDashboard() {
         const activeRoute = routesData.find((r: any) => 
           r.driver_id === d.id && r.status === 'in-progress'
         )
+        const totalStops = activeRoute?.route_stops?.length || 0
+        const completedStops = activeRoute?.route_stops?.filter((s: any) => s.status === 'delivered').length || 0
         return {
           ...d,
           name: user ? `${user.first_name} ${user.last_name}` : 'Unknown Driver',
           email: user?.email,
           hasActiveRoute: !!activeRoute,
-          routeName: activeRoute?.name || 'No Active Route'
+          routeName: activeRoute?.name || 'No Active Route',
+          totalStops,
+          completedStops,
         }
       })
 
@@ -105,7 +127,7 @@ export default function AdminDashboard() {
             hour: "2-digit",
             minute: "2-digit",
           }),
-          stops: 0,
+          stops: route.route_stops?.length || 0,
           status: route.status,
         }))
       )
@@ -119,20 +141,36 @@ export default function AdminDashboard() {
           email: d.email || '',
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.id}`,
           route: d.routeName,
-          status: d.status || "inactive",
-          statusText: "On time",
-          progress: "0/0 stops",
+          status: mapDriverStatus(d.status),
+          statusText: d.status === "on_break" ? "On break" : "On time",
+          progress: `${d.completedStops}/${d.totalStops} stops`,
           location: { lat: d.current_latitude || 33.7175, lng: d.current_longitude || -117.8311 },
         }))
       )
 
-      setRoutes(routesData)
+      setRoutes(
+        routesData.map((r: any) => ({
+          ...r,
+          stops: r.route_stops?.length || 0,
+        }))
+      )
+      const today = new Date().toDateString()
+      setCompletedTodayCount(
+        deliveriesData.filter((d: any) => d.action === 'delivered' && new Date(d.timestamp).toDateString() === today)
+          .length
+      )
+      setFailedTodayCount(
+        deliveriesData.filter((d: any) => d.action === 'failed' && new Date(d.timestamp).toDateString() === today)
+          .length
+      )
+
       setRecentDeliveries(
         deliveriesWithDetails.slice(0, 10).map((d: any) => ({
           id: d.id,
           driver: d.driver,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.driver_id}`,
           pharmacy: d.pharmacy,
+          action: d.action,
           time: new Date(d.timestamp).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
@@ -197,7 +235,6 @@ export default function AdminDashboard() {
   }
 
   const activeDriversCount = drivers.length
-  const completedTodayCount = recentDeliveries.length
   const inProgressCount = 0
 
   return (
@@ -355,6 +392,15 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                       <div className="flex flex-col md:flex-row items-end md:items-center gap-2 flex-shrink-0">
+                        {delivery.action === "failed" ? (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-800">
+                            Failed
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                            Delivered
+                          </span>
+                        )}
                         <span className="text-xs md:text-sm text-muted-foreground">{delivery.time}</span>
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Completed</Badge>
                       </div>

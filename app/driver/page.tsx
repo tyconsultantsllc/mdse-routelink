@@ -64,6 +64,12 @@ export default function DriverTrackingPage() {
 
   useEffect(() => {
     fetchDriverRoutes()
+
+    // Without this, a route assigned after the driver's page is already
+    // open would never appear until they manually reload - it would look
+    // exactly like "no routes assigned" even though one exists.
+    const interval = setInterval(fetchDriverRoutes, 20000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchDriverRoutes = async () => {
@@ -90,14 +96,14 @@ export default function DriverTrackingPage() {
           name: r.name || "Unnamed Route",
           priority: r.priority || "medium",
           status: r.status || "pending",
-          startTime: r.scheduled_start
-            ? new Date(r.scheduled_start).toLocaleTimeString("en-US", {
+          startTime: r.start_time
+            ? new Date(r.start_time).toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",
               })
             : "N/A",
-          endTime: r.scheduled_end
-            ? new Date(r.scheduled_end).toLocaleTimeString("en-US", {
+          endTime: r.end_time
+            ? new Date(r.end_time).toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",
               })
@@ -605,16 +611,38 @@ export default function DriverTrackingPage() {
                                   <div className="text-xs md:text-sm space-y-2">
                                     <div className="flex items-start gap-2">
                                       <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                                      <div>
+                                      <div className="flex-1">
                                         <p className="text-muted-foreground text-xs">Pickup</p>
                                         <p className="text-foreground">{stop.pickupAddress}</p>
+                                        {stop.pickupAddress !== "N/A" && (
+                                          <a
+                                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.pickupAddress)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-primary text-xs font-medium mt-0.5"
+                                          >
+                                            <Navigation className="h-3 w-3" />
+                                            Get Directions
+                                          </a>
+                                        )}
                                       </div>
                                     </div>
                                     <div className="flex items-start gap-2">
                                       <MapPin className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                                      <div>
+                                      <div className="flex-1">
                                         <p className="text-muted-foreground text-xs">Dropoff</p>
                                         <p className="text-foreground">{stop.dropoffAddress}</p>
+                                        {stop.dropoffAddress !== "N/A" && (
+                                          <a
+                                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.dropoffAddress)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-primary text-xs font-medium mt-0.5"
+                                          >
+                                            <Navigation className="h-3 w-3" />
+                                            Get Directions
+                                          </a>
+                                        )}
                                       </div>
                                     </div>
                                     {stop.arrival && (

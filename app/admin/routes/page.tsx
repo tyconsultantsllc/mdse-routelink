@@ -56,6 +56,8 @@ export default function RouteManagement() {
       setRoutes(
         routesData?.map((r: any) => {
           const driver = usersData.find((u: any) => u.id === r.driver_id && u.role === "driver")
+          const stops = r.route_stops || []
+          const failedStops = stops.filter((s: any) => s.status === 'failed').length
           return {
             id: r.id,
             name: r.name || "Unnamed Route",
@@ -65,21 +67,22 @@ export default function RouteManagement() {
             avatar: driver
               ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.driver_id}`
               : null,
-            stops: r.total_stops || 0,
-            startTime: r.scheduled_start
-              ? new Date(r.scheduled_start).toLocaleTimeString("en-US", {
+            stops: stops.length,
+            failedStops,
+            startTime: r.start_time
+              ? new Date(r.start_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
               : "N/A",
-            endTime: r.scheduled_end
-              ? new Date(r.scheduled_end).toLocaleTimeString("en-US", {
+            endTime: r.end_time
+              ? new Date(r.end_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
               : "N/A",
-            estimatedDuration: "N/A",
-            distance: `${r.total_distance || 0} miles`,
+            estimatedDuration: r.estimated_duration ? `${r.estimated_duration} min` : "N/A",
+            distance: "N/A",
             priority: r.priority || "medium",
             status: r.status || "pending",
           }
@@ -287,11 +290,18 @@ export default function RouteManagement() {
                           </Badge>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <Badge className={getStatusColor(route.status)}>
-                            {route.status === "in-progress"
-                              ? "In Progress"
-                              : route.status.charAt(0).toUpperCase() + route.status.slice(1)}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getStatusColor(route.status)}>
+                              {route.status === "in-progress"
+                                ? "In Progress"
+                                : route.status.charAt(0).toUpperCase() + route.status.slice(1)}
+                            </Badge>
+                            {route.failedStops > 0 && (
+                              <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
+                                {route.failedStops} failed
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           {route.assignedDriver ? (

@@ -57,7 +57,7 @@ export default function DeliveryLogs() {
             address: pharmacy?.address || "N/A",
             date: new Date(d.timestamp || d.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
             time: new Date(d.timestamp || d.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-            status: d.status || "pending",
+            status: d.action === 'delivered' ? 'completed' : d.action === 'failed' ? 'failed' : (d.action || 'pending'),
             priority: "medium",
             stops: 1,
           }
