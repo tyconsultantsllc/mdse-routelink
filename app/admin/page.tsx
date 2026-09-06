@@ -158,10 +158,17 @@ export default function AdminDashboard() {
           stops: r.route_stops?.length || 0,
         }))
       )
-      setTotalRoutesCount(routesData.length)
-      setCompletedRoutesCount(routesData.filter((r: any) => r.status === 'completed').length)
 
       const today = new Date().toDateString()
+      const isToday = (dateStr: string | null) => !!dateStr && new Date(dateStr).toDateString() === today
+
+      // "Today's routes" = scheduled for today (start_time). Routes with no
+      // start_time set fall back to when they were created, so routes never
+      // silently disappear from this count just for missing that field.
+      const todaysRoutes = routesData.filter((r: any) => isToday(r.start_time) || (!r.start_time && isToday(r.created_at)))
+      setTotalRoutesCount(todaysRoutes.length)
+      setCompletedRoutesCount(todaysRoutes.filter((r: any) => r.status === 'completed').length)
+
       setCompletedTodayCount(
         deliveriesData.filter((d: any) => d.action === 'delivered' && new Date(d.timestamp).toDateString() === today)
           .length
@@ -329,7 +336,7 @@ export default function AdminDashboard() {
                     <Clock className="h-5 w-5 md:h-6 md:w-6" />
                   </div>
                   <div className="ml-3 md:ml-4">
-                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Completed Routes</p>
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Completed Routes Today</p>
                     <p className="text-xl md:text-2xl font-bold text-foreground">
                       {completedRoutesCount}/{totalRoutesCount}
                     </p>
