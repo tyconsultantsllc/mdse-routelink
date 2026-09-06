@@ -52,6 +52,9 @@ export default function AdminDashboard() {
   const [recentDeliveries, setRecentDeliveries] = useState<any[]>([])
   const [completedTodayCount, setCompletedTodayCount] = useState(0)
   const [failedTodayCount, setFailedTodayCount] = useState(0)
+  const [totalDriversCount, setTotalDriversCount] = useState(0)
+  const [totalRoutesCount, setTotalRoutesCount] = useState(0)
+  const [completedRoutesCount, setCompletedRoutesCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [unassignedRoutes, setUnassignedRoutes] = useState<Route[]>([])
 
@@ -133,6 +136,7 @@ export default function AdminDashboard() {
       )
 
       const activeDriversList = driversWithUsers.filter((d: any) => d.hasActiveRoute)
+      setTotalDriversCount(driversWithUsers.length)
       
       setDrivers(
         activeDriversList.map((d: any) => ({
@@ -154,6 +158,9 @@ export default function AdminDashboard() {
           stops: r.route_stops?.length || 0,
         }))
       )
+      setTotalRoutesCount(routesData.length)
+      setCompletedRoutesCount(routesData.filter((r: any) => r.status === 'completed').length)
+
       const today = new Date().toDateString()
       setCompletedTodayCount(
         deliveriesData.filter((d: any) => d.action === 'delivered' && new Date(d.timestamp).toDateString() === today)
@@ -235,7 +242,6 @@ export default function AdminDashboard() {
   }
 
   const activeDriversCount = drivers.length
-  const inProgressCount = 0
 
   return (
     <TooltipProvider>
@@ -300,7 +306,9 @@ export default function AdminDashboard() {
                   </div>
                   <div className="ml-3 md:ml-4">
                     <p className="text-xs md:text-sm font-medium text-muted-foreground">Active Drivers</p>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">{activeDriversCount}</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">
+                      {activeDriversCount}/{totalDriversCount}
+                    </p>
                   </div>
                 </div>
               </Card>
@@ -321,8 +329,10 @@ export default function AdminDashboard() {
                     <Clock className="h-5 w-5 md:h-6 md:w-6" />
                   </div>
                   <div className="ml-3 md:ml-4">
-                    <p className="text-xs md:text-sm font-medium text-muted-foreground">In Progress</p>
-                    <p className="text-xl md:text-2xl font-bold text-foreground">{inProgressCount}</p>
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Completed Routes</p>
+                    <p className="text-xl md:text-2xl font-bold text-foreground">
+                      {completedRoutesCount}/{totalRoutesCount}
+                    </p>
                   </div>
                 </div>
               </Card>
