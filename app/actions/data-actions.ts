@@ -605,6 +605,80 @@ export async function broadcastMessageToAllDrivers(content: string) {
   return { sentTo: messagesToInsert.length }
 }
 
+export async function getPharmacyReports() {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('pharmacy_reports')
+    .select('*, pharmacies(name)')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function resolvePharmacyReport(reportId: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('pharmacy_reports')
+    .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+    .eq('id', reportId)
+
+  if (error) throw error
+}
+
+// Signatures live in a private storage bucket that only the uploading driver
+// or an admin can read directly (see 004_delivery_confirmation.sql) - a
+// pharmacy viewing their own delivery's signature doesn't fit either of
+// those, so this does the authorization check here in application code
+// (does this stop actually belong to this pharmacy?) before using the
+// service-role client to generate the signed URL.
+export async function getDeliverySignatureUrl(stopId: string) {
+  const { userId, role } = await verifyAuth()
+
+  const supabase = createAdminClient()
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select('signature_path, pharmacy_id')
+    .eq('id', stopId)
+    .single()
+
+  if (stopError) throw stopError
+  if (!stop.signature_path) throw new Error('No signature on file for this delivery')
+
+  if (role !== 'admin') {
+    const { data: pharmacyUser } = await supabase
+      .from('pharmacy_users')
+      .select('pharmacy_id')
+      .eq('id', userId)
+      .single()
+
+    if (!pharmacyUser || pharmacyUser.pharmacy_id !== stop.pharmacy_id) {
+      throw new Error('Forbidden: You do not have access to this delivery')
+    }
+  }
+
+  const { data: signedUrlData, error: urlError } = await supabase.storage
+    .from('proof-of-delivery')
+    .createSignedUrl(stop.signature_path, 3600)
+
+  if (urlError) throw urlError
+
+  return signedUrlData.signedUrl
+}
+
 export async function getDispatchConversations() {
   const { role, userId } = await verifyAuth()
 

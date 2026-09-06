@@ -19,11 +19,13 @@ import {
   Settings,
   Megaphone,
   MessageSquare,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: Home },
@@ -33,6 +35,7 @@ const navigation = [
   { name: "Routes", href: "/admin/routes", icon: MapIcon },
   { name: "Calendar", href: "/admin/calendar", icon: CalendarIcon },
   { name: "Messages", href: "/admin/messages", icon: MessageSquare },
+  { name: "Pharmacy Reports", href: "/admin/pharmacy-reports", icon: AlertCircle },
   { name: "Delivery Logs", href: "/admin/logs", icon: Clock },
   { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
   { name: "Reports", href: "/admin/reports", icon: BarChart2 },
@@ -43,6 +46,21 @@ const navigation = [
 export function AdminSidebar() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [openReportsCount, setOpenReportsCount] = useState(0)
+
+  useEffect(() => {
+    const checkReports = async () => {
+      const supabase = createClient()
+      const { count } = await supabase
+        .from("pharmacy_reports")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "open")
+      setOpenReportsCount(count || 0)
+    }
+    checkReports()
+    const interval = setInterval(checkReports, 15000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <>
@@ -100,6 +118,11 @@ export function AdminSidebar() {
                             className={`mr-3 h-5 w-5 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`}
                           />
                           {item.name}
+                          {item.name === "Pharmacy Reports" && openReportsCount > 0 && (
+                            <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center">
+                              {openReportsCount > 9 ? "9+" : openReportsCount}
+                            </span>
+                          )}
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right">

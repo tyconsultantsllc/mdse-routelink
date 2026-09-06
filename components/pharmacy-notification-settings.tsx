@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Bell, Mail, MessageSquare, Package, Truck } from "lucide-react"
+import { Bell, Package, Truck } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -11,8 +11,6 @@ import { useToast } from "@/hooks/use-toast"
 export function PharmacyNotificationSettings() {
   const { toast } = useToast()
   const [settings, setSettings] = useState({
-    emailNotifications: true,
-    smsNotifications: false,
     deliveryCompleted: true,
     deliveryEnRoute: true,
     deliveryDelayed: true,
@@ -47,39 +45,6 @@ export function PharmacyNotificationSettings() {
         <CardDescription>Choose how you want to be notified about deliveries</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Notification Channels */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold">Notification Channels</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="email" className="cursor-pointer">
-                  Email Notifications
-                </Label>
-              </div>
-              <Switch
-                id="email"
-                checked={settings.emailNotifications}
-                onCheckedChange={() => handleToggle("emailNotifications")}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="sms" className="cursor-pointer">
-                  SMS Notifications
-                </Label>
-              </div>
-              <Switch
-                id="sms"
-                checked={settings.smsNotifications}
-                onCheckedChange={() => handleToggle("smsNotifications")}
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Delivery Events */}
         <div className="space-y-4">
           <h3 className="text-sm font-semibold">Delivery Events</h3>

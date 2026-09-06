@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell } from 'lucide-react'
+import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { AnnouncementBanner } from "@/components/announcement-banner"
+import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
@@ -32,9 +34,12 @@ export default function PharmacyDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const [pharmacyName, setPharmacyName] = useState("")
+  const [pharmacyId, setPharmacyId] = useState("")
+  const [userId, setUserId] = useState("")
   const [deliveries, setDeliveries] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
+  const [reportModalOpen, setReportModalOpen] = useState(false)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -53,6 +58,8 @@ export default function PharmacyDashboard() {
 
       if (!user) return
 
+      setUserId(user.id)
+
       // Get pharmacy ID from pharmacy_users table
       const { data: pharmacyUser, error: pharmacyUserError } = await supabase
         .from("pharmacy_users")
@@ -61,6 +68,8 @@ export default function PharmacyDashboard() {
         .single()
 
       if (pharmacyUserError) throw pharmacyUserError
+
+      setPharmacyId(pharmacyUser.pharmacy_id)
 
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
@@ -236,6 +245,19 @@ export default function PharmacyDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setReportModalOpen(true)}
+                    className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
+                  >
+                    <AlertCircle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Contact Dispatch</TooltipContent>
+              </Tooltip>
               <Dialog open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen}>
                 <DialogTrigger asChild>
                   <Tooltip>
@@ -369,8 +391,13 @@ export default function PharmacyDashboard() {
 
           {/* Recent Completed Deliveries */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base md:text-lg">Recent Completed Deliveries</CardTitle>
+              <Link href="/pharmacy/history">
+                <Button variant="outline" size="sm">
+                  View Full History
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 md:space-y-4">
@@ -402,6 +429,14 @@ export default function PharmacyDashboard() {
           </Card>
         </div>
       </div>
+      {pharmacyId && userId && (
+        <PharmacyReportModal
+          open={reportModalOpen}
+          onOpenChange={setReportModalOpen}
+          pharmacyId={pharmacyId}
+          userId={userId}
+        />
+      )}
     </TooltipProvider>
   )
 }
