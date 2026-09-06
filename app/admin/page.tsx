@@ -162,10 +162,16 @@ export default function AdminDashboard() {
       const today = new Date().toDateString()
       const isToday = (dateStr: string | null) => !!dateStr && new Date(dateStr).toDateString() === today
 
-      // "Today's routes" = scheduled for today (start_time). Routes with no
-      // start_time set fall back to when they were created, so routes never
-      // silently disappear from this count just for missing that field.
-      const todaysRoutes = routesData.filter((r: any) => isToday(r.start_time) || (!r.start_time && isToday(r.created_at)))
+      // "Today's routes" = routes with actual delivery activity today, not
+      // routes merely created/scheduled today. A route created days ago
+      // during earlier testing but actually worked today should still
+      // count - scheduling metadata isn't a reliable signal for that,
+      // actual delivery_logs timestamps are (same signal Completed Today
+      // already uses correctly).
+      const routeIdsActiveToday = new Set(
+        deliveriesData.filter((d: any) => isToday(d.timestamp)).map((d: any) => d.route_id),
+      )
+      const todaysRoutes = routesData.filter((r: any) => routeIdsActiveToday.has(r.id))
       setTotalRoutesCount(todaysRoutes.length)
       setCompletedRoutesCount(todaysRoutes.filter((r: any) => r.status === 'completed').length)
 
