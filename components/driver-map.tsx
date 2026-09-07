@@ -6,13 +6,15 @@ import "leaflet/dist/leaflet.css"
 
 interface DriverMapProps {
   center: { lat: number; lng: number }
+  previewStops?: { lat: number; lng: number; label: string; type: "pickup" | "dropoff" }[]
 }
 
-export default function DriverMap({ center }: DriverMapProps) {
+export default function DriverMap({ center, previewStops = [] }: DriverMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
   const pathRef = useRef<L.Polyline | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const previewLayersRef = useRef<L.Layer[]>([])
   const [pathCoords, setPathCoords] = useState<[number, number][]>([])
   const [speed, setSpeed] = useState(0)
   const [heading, setHeading] = useState(0)
@@ -106,6 +108,43 @@ export default function DriverMap({ center }: DriverMapProps) {
       document.head.removeChild(style)
     }
   }, [])
+
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    previewLayersRef.current.forEach((layer) => mapRef.current?.removeLayer(layer))
+    previewLayersRef.current = []
+
+    if (previewStops.length === 0) return
+
+    const points: [number, number][] = previewStops.map((s) => [s.lat, s.lng])
+
+    const line = L.polyline(points, { color: "#6366f1", weight: 3, opacity: 0.6, dashArray: "6, 8" }).addTo(
+      mapRef.current,
+    )
+    previewLayersRef.current.push(line)
+
+    previewStops.forEach((stop) => {
+      const icon = L.divIcon({
+        className: "custom-stop-marker",
+        html: `
+          <div style="
+            background: ${stop.type === "pickup" ? "#3b82f6" : "#10b981"};
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          "></div>
+        `,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      })
+      const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(mapRef.current!)
+      marker.bindPopup(`<strong>${stop.type === "pickup" ? "Pickup" : "Dropoff"}</strong><br/>${stop.label}`)
+      previewLayersRef.current.push(marker)
+    })
+  }, [previewStops])
 
   useEffect(() => {
     if (markerRef.current && mapRef.current) {

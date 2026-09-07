@@ -31,6 +31,8 @@ interface RouteStop {
   pharmacyId: string
   pharmacyName: string
   pickupAddress: string
+  pickupLat?: number | null
+  pickupLng?: number | null
   dropoffAddress: string
   estimatedTime: number
   arrival?: string
@@ -60,6 +62,9 @@ export default function DriverTrackingPage() {
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null)
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [routes, setRoutes] = useState<Route[]>([])
+  const [previewStops, setPreviewStops] = useState<
+    { lat: number; lng: number; label: string; type: "pickup" | "dropoff" }[]
+  >([])
   const [loading, setLoading] = useState(true)
   const [driverId, setDriverId] = useState<string | null>(null)
   const [driverEmail, setDriverEmail] = useState("")
@@ -75,6 +80,49 @@ export default function DriverTrackingPage() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    // Preview whichever route the driver is actually working, falling back
+    // to the next pending one so there's something to see even before
+    // clocking into a stop.
+    const routeToPreview =
+      routes.find((r) => r.status === "in-progress") || routes.find((r) => r.status === "pending")
+
+    if (!routeToPreview || routeToPreview.stops.length === 0) {
+      setPreviewStops([])
+      return
+    }
+
+    let cancelled = false
+
+    const buildPreview = async () => {
+      const { geocodeAddress } = await import("@/lib/geocode")
+      const points: { lat: number; lng: number; label: string; type: "pickup" | "dropoff" }[] = []
+
+      for (const stop of routeToPreview.stops) {
+        if (stop.pickupLat != null && stop.pickupLng != null) {
+          points.push({ lat: stop.pickupLat, lng: stop.pickupLng, label: stop.pharmacyName, type: "pickup" })
+        }
+        if (stop.dropoffAddress && stop.dropoffAddress !== "N/A") {
+          const coords = await geocodeAddress(stop.dropoffAddress)
+          if (cancelled) return
+          if (coords) {
+            points.push({ lat: coords.lat, lng: coords.lng, label: "Dropoff", type: "dropoff" })
+            // Nominatim's public server caps requests at ~1/second
+            await new Promise((resolve) => setTimeout(resolve, 1100))
+          }
+        }
+      }
+
+      if (!cancelled) setPreviewStops(points)
+    }
+
+    buildPreview()
+
+    return () => {
+      cancelled = true
+    }
+  }, [routes])
+
   const fetchDriverRoutes = async () => {
     try {
       const supabase = createClient()
@@ -87,7 +135,7 @@ export default function DriverTrackingPage() {
 
       const { data, error } = await supabase
         .from("routes")
-        .select("*, route_stops(*, pharmacies(name, address))")
+        .select("*, route_stops(*, pharmacies(name, address, latitude, longitude))")
         .eq("driver_id", user.id)
         .order("created_at", { ascending: false })
         .order("stop_order", { foreignTable: "route_stops", ascending: true })
@@ -118,6 +166,8 @@ export default function DriverTrackingPage() {
               pharmacyId: stop.pharmacy_id,
               pharmacyName: stop.pharmacies?.name || "Unknown Pharmacy",
               pickupAddress: stop.pharmacies?.address || "N/A",
+              pickupLat: stop.pharmacies?.latitude ?? null,
+              pickupLng: stop.pharmacies?.longitude ?? null,
               dropoffAddress: stop.dropoff_address || "N/A",
               estimatedTime: stop.estimated_time || 30,
               // DB uses pending/picked_up/delivered/failed; UI uses pending/in-progress/completed/failed
@@ -321,14 +371,25 @@ export default function DriverTrackingPage() {
   }
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    localStorage.removeItem("mdse_routelink_user")
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out",
-    })
-    router.push("/auth/login")
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out",
+      })
+    } catch (error) {
+      console.error("Sign out error:", error)
+      toast({
+        title: "Logged Out",
+        description: "Signed out locally - your session may still be active on the server.",
+      })
+    } finally {
+      localStorage.removeItem("mdse_routelink_user")
+      router.push("/auth/login")
+    }
   }
 
   useEffect(() => {
@@ -529,7 +590,7 @@ export default function DriverTrackingPage() {
               <Card className="p-4 md:p-6">
                 <h2 className="text-base md:text-lg font-medium text-foreground mb-4">Live Tracking</h2>
                 <div className="h-[300px] md:h-[400px]">
-                  <DriverMap center={currentLocation} />
+                  <DriverMap center={currentLocation} previewStops={previewStops} />
                 </div>
                 <div className="mt-3 md:mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs md:text-sm text-muted-foreground">
                   <div className="flex items-center">
