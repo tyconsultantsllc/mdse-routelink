@@ -52,10 +52,21 @@ export default function PerformanceDashboard() {
       const routesById = new Map(stats.routes.map((r: any) => [r.id, { end_time: r.end_time }]))
 
       // Calculate performance metrics for drivers
+      const now = new Date()
       const drivers = users.filter((u: any) => u.role === 'driver')
       const performance = drivers.map((driver: any) => {
         const driverLogs = stats.logs.filter((log: any) => log.driver_id === driver.id)
         const driverRoutes = stats.routes.filter((route: any) => route.driver_id === driver.id)
+
+        const thisMonthCount = driverLogs.filter((log: any) => {
+          const d = new Date(log.timestamp)
+          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+        }).length
+        const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const lastMonthCount = driverLogs.filter((log: any) => {
+          const d = new Date(log.timestamp)
+          return d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() === lastMonthDate.getMonth()
+        }).length
 
         return {
           id: driver.id,
@@ -65,7 +76,7 @@ export default function PerformanceDashboard() {
           onTimeRate: calculateOnTimeRate(driverLogs, routesById, gracePeriod),
           avgDeliveryTime: 0, // no reliable duration data source yet
           customerRating: 0, // no ratings system exists yet
-          trend: 'up'
+          trend: thisMonthCount >= lastMonthCount ? 'up' : 'down',
         }
       })
       
@@ -92,7 +103,7 @@ export default function PerformanceDashboard() {
   const avgDeliveryTime = driverPerformance.length > 0
     ? Math.round(driverPerformance.reduce((sum, d) => sum + d.avgDeliveryTime, 0) / driverPerformance.length)
     : 0
-  const topPerformer = driverPerformance[0]
+  const topPerformer = [...driverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate)[0]
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
   const today = new Date()
@@ -173,10 +184,6 @@ export default function PerformanceDashboard() {
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Total Deliveries</p>
                       <p className="text-3xl font-bold text-foreground mt-2">{totalDeliveries}</p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                        <TrendingUp className="h-4 w-4" />
-                        <span>12% from last period</span>
-                      </p>
                     </div>
                     <div className="p-3 rounded-full bg-blue-100">
                       <Truck className="h-6 w-6 text-blue-600" />
@@ -189,10 +196,6 @@ export default function PerformanceDashboard() {
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">On-Time Rate</p>
                       <p className="text-3xl font-bold text-foreground mt-2">{avgOnTimeRate}%</p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                        <TrendingUp className="h-4 w-4" />
-                        <span>3% improvement</span>
-                      </p>
                     </div>
                     <div className="p-3 rounded-full bg-green-100">
                       <CheckCircle className="h-6 w-6 text-green-600" />
@@ -204,11 +207,7 @@ export default function PerformanceDashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Avg Delivery Time</p>
-                      <p className="text-3xl font-bold text-foreground mt-2">{avgDeliveryTime}m</p>
-                      <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                        <TrendingDown className="h-4 w-4" />
-                        <span>2m faster</span>
-                      </p>
+                      <p className="text-3xl font-bold text-foreground mt-2">N/A</p>
                     </div>
                     <div className="p-3 rounded-full bg-yellow-100">
                       <Clock className="h-6 w-6 text-yellow-600" />
@@ -315,7 +314,7 @@ export default function PerformanceDashboard() {
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Driver Performance Rankings</h3>
                     <div className="space-y-4">
-                      {driverPerformance.map((driver, index) => (
+                      {[...driverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate).map((driver, index) => (
                         <div
                           key={driver.id}
                           className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
@@ -349,12 +348,12 @@ export default function PerformanceDashboard() {
 
                             <div className="text-center">
                               <p className="text-sm text-muted-foreground">Avg Time</p>
-                              <p className="text-lg font-bold mt-1">{driver.avgDeliveryTime}m</p>
+                              <p className="text-lg font-bold mt-1">N/A</p>
                             </div>
 
                             <div className="text-center">
                               <p className="text-sm text-muted-foreground">Rating</p>
-                              <p className="text-lg font-bold mt-1">⭐ {driver.customerRating}</p>
+                              <p className="text-lg font-bold mt-1">No ratings yet</p>
                             </div>
 
                             <Badge

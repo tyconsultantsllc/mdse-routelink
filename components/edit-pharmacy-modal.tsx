@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { geocodeAddress } from "@/lib/geocode"
 
 interface EditPharmacyModalProps {
   open: boolean
@@ -49,6 +50,17 @@ export function EditPharmacyModal({ open, onOpenChange, pharmacy, onSuccess }: E
     try {
       const supabase = createClient()
 
+      let latitude = formData.latitude ? Number.parseFloat(formData.latitude) : null
+      let longitude = formData.longitude ? Number.parseFloat(formData.longitude) : null
+
+      if (latitude == null || longitude == null) {
+        const geocoded = await geocodeAddress(formData.address)
+        if (geocoded) {
+          latitude = geocoded.lat
+          longitude = geocoded.lng
+        }
+      }
+
       const { error } = await supabase
         .from("pharmacies")
         .update({
@@ -56,8 +68,8 @@ export function EditPharmacyModal({ open, onOpenChange, pharmacy, onSuccess }: E
           address: formData.address,
           phone: formData.contactPhone,
           email: formData.contactEmail,
-          latitude: formData.latitude ? Number.parseFloat(formData.latitude) : null,
-          longitude: formData.longitude ? Number.parseFloat(formData.longitude) : null,
+          latitude,
+          longitude,
           updated_at: new Date().toISOString(),
         })
         .eq("id", pharmacy.id)
@@ -114,7 +126,7 @@ export function EditPharmacyModal({ open, onOpenChange, pharmacy, onSuccess }: E
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="editLatitude">Latitude</Label>
+              <Label htmlFor="editLatitude">Latitude (optional)</Label>
               <Input
                 id="editLatitude"
                 type="number"
@@ -124,7 +136,7 @@ export function EditPharmacyModal({ open, onOpenChange, pharmacy, onSuccess }: E
               />
             </div>
             <div>
-              <Label htmlFor="editLongitude">Longitude</Label>
+              <Label htmlFor="editLongitude">Longitude (optional)</Label>
               <Input
                 id="editLongitude"
                 type="number"

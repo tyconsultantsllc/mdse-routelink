@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { geocodeAddress } from "@/lib/geocode"
 
 interface AddPharmacyModalProps {
   open: boolean
@@ -34,19 +35,34 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
     try {
       const supabase = createClient()
 
+      let latitude = formData.latitude ? parseFloat(formData.latitude) : null
+      let longitude = formData.longitude ? parseFloat(formData.longitude) : null
+
+      // Every other address in the app (route stops, dropoffs) is geocoded
+      // automatically. Requiring an admin to manually look up and type in
+      // exact coordinates here was inconsistent and easy to skip entirely -
+      // and a pharmacy with no coordinates silently breaks the maps and
+      // route optimizer wherever it's used.
+      if (latitude == null || longitude == null) {
+        const geocoded = await geocodeAddress(formData.address)
+        if (geocoded) {
+          latitude = geocoded.lat
+          longitude = geocoded.lng
+        }
+      }
+
       const { error } = await supabase.from("pharmacies").insert([
         {
           name: formData.name,
           address: formData.address,
           phone: formData.contactPhone,
           email: formData.contactEmail,
-          latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-          longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+          latitude,
+          longitude,
         },
       ])
 
       if (error) {
-        console.error("[v0] Pharmacy insert error:", error)
         throw error
       }
 
@@ -59,7 +75,6 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
       onOpenChange(false)
       resetForm()
     } catch (error: any) {
-      console.error("[v0] Failed to add pharmacy:", error)
       toast({
         title: "Error",
         description: error.message || "Failed to add pharmacy",
@@ -113,23 +128,23 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="latitude">Latitude</Label>
+              <Label htmlFor="latitude">Latitude (optional)</Label>
               <Input
                 id="latitude"
                 type="number"
                 step="any"
-                placeholder="33.7175"
+                placeholder="Auto-detected from address"
                 value={formData.latitude}
                 onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
               />
             </div>
             <div>
-              <Label htmlFor="longitude">Longitude</Label>
+              <Label htmlFor="longitude">Longitude (optional)</Label>
               <Input
                 id="longitude"
                 type="number"
                 step="any"
-                placeholder="-117.8311"
+                placeholder="Auto-detected from address"
                 value={formData.longitude}
                 onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
               />

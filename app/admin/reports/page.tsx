@@ -17,7 +17,7 @@ import {
 import { Line, LineChart, Bar, BarChart, Pie, PieChart, XAxis, YAxis, CartesianGrid, Cell } from "recharts"
 import { ExportDialog } from "@/components/export-dialog"
 import { useState, useEffect } from "react"
-import { getDashboardStats, getUsers } from "@/app/actions/data-actions"
+import { getDashboardStats, getUsers, getPharmacies } from "@/app/actions/data-actions"
 import { calculateOnTimeRate, isDeliveryOnTime, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -35,8 +35,8 @@ export default function Reports() {
 
   const fetchStats = async () => {
     try {
-      const [dashboardStats, users] = await Promise.all([getDashboardStats(), getUsers()])
-      setStats({ ...dashboardStats, users })
+      const [dashboardStats, users, pharmacies] = await Promise.all([getDashboardStats(), getUsers(), getPharmacies()])
+      setStats({ ...dashboardStats, users, pharmacies })
 
       const { getAppSetting } = await import("@/lib/app-settings")
       const systemSettings = await getAppSetting<{ onTimeGracePeriodMinutes?: number }>("system_settings")
@@ -96,7 +96,13 @@ export default function Reports() {
       deliveries: stats.logs.filter((log: any) => log.driver_id === driver.id).length
     })) || []
 
-  const pharmaciesData: any[] = [] // Would need to aggregate by pharmacy
+  const pharmaciesData = (stats?.pharmacies || []).map((pharmacy: any) => ({
+    name: pharmacy.name,
+    deliveries: (stats?.logs || []).filter((log: any) => log.pharmacy_id === pharmacy.id).length,
+  }))
+
+  const driverNameById = new Map((stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]))
+  const pharmacyNameById = new Map((stats?.pharmacies || []).map((p: any) => [p.id, p.name]))
 
   const exportData = {
     stats: [
@@ -104,8 +110,13 @@ export default function Reports() {
       { label: "On-Time Rate", value: `${onTimeRate}%` },
       { label: "Avg Delivery Time", value: `${avgDeliveryTime} min` },
     ],
-    headers: ["Month", "Deliveries", "Status", "Driver", "Pharmacy"],
-    rows: [],
+    headers: ["Date", "Driver", "Pharmacy", "Status"],
+    rows: (stats?.logs || []).map((log: any) => [
+      new Date(log.timestamp).toLocaleString(),
+      driverNameById.get(log.driver_id) || "Unknown",
+      pharmacyNameById.get(log.pharmacy_id) || "Unknown",
+      log.action === 'delivered' ? 'Delivered' : log.action === 'failed' ? 'Failed' : log.action,
+    ]),
     deliveries: deliveriesData,
     drivers: driversData,
     pharmacies: pharmaciesData,
