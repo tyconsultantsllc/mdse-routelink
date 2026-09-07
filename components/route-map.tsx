@@ -98,16 +98,18 @@ export default function RouteMap({ highlightedRouteId, routes = [] }: RouteMapPr
         }
 
         if (points.length === 0) continue
+        if (!mapRef.current) return
+        const map = mapRef.current
 
         const color = PRIORITY_COLORS[route.priority] || PRIORITY_COLORS.medium
-        const polyline = L.polyline(points, { color, weight: 4, opacity: 0.7 }).addTo(mapRef.current!)
+        const polyline = L.polyline(points, { color, weight: 4, opacity: 0.7 }).addTo(map)
         polyline.bindPopup(`<strong>${route.name}</strong>`)
         routeLayersRef.current.set(route.id, polyline)
 
         points.forEach((point, index) => {
           const stop = stops[Math.floor(index / 2)]
           L.marker(point)
-            .addTo(mapRef.current!)
+            .addTo(map)
             .bindPopup(`<strong>${route.name}</strong><br/>${stop?.pharmacies?.name || "Stop"}`)
         })
 

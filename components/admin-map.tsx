@@ -140,6 +140,7 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
         }
 
         if (points.length === 0) continue
+        if (!mapRef.current) return
 
         // A straight line between real coordinates, rather than a
         // fabricated "street-following" path with no relationship to
@@ -149,7 +150,7 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
           weight: 4,
           opacity: 0.7,
           dashArray: route.status === "pending" ? "10, 10" : undefined,
-        }).addTo(mapRef.current!)
+        }).addTo(mapRef.current)
 
         routeLine.bindPopup(`
           <div class="p-2">
@@ -165,6 +166,8 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
 
         routeLinesRef.current.set(route.id, routeLine)
 
+        if (!mapRef.current) return
+        const map = mapRef.current
         points.forEach((point, index) => {
           const isFirst = index === 0
           const isLast = index === points.length - 1
@@ -186,7 +189,7 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
           })
 
           L.marker(point, { icon: stopIcon })
-            .addTo(mapRef.current!)
+            .addTo(map)
             .bindPopup(`
               <div class="p-2">
                 <p class="text-xs font-medium">${route.name}</p>
