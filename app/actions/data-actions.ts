@@ -290,7 +290,7 @@ export async function getDashboardStats() {
   // fetching every row to count client-side — worth doing before that page
   // is relied on for real reporting.
   const [routesResult, driversResult, logsResult] = await Promise.all([
-    supabase.from('routes').select('*'),
+    supabase.from('routes').select('*, route_stops(*, pharmacies(name, address, latitude, longitude))'),
     supabase.from('drivers').select('*'),
     supabase.from('delivery_logs').select('*').order('timestamp', { ascending: false }).limit(1000)
   ])

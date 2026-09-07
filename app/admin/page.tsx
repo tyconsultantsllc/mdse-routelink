@@ -154,6 +154,7 @@ export default function AdminDashboard() {
         routesData.map((r: any) => ({
           ...r,
           stops: r.route_stops?.length || 0,
+          stopDetails: (r.route_stops || []).sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0)),
         }))
       )
 

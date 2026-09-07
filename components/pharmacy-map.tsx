@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { generateMultiStopStreetPath } from "@/lib/route-utils"
 import type { Route } from "@/lib/types"
 
 interface PharmacyMapProps {
@@ -72,8 +71,10 @@ export default function PharmacyMap({ deliveries }: PharmacyMapProps) {
 
       const color = getPriorityColor(delivery.priority)
 
-      // Generate street-following path
-      const streetPath = generateMultiStopStreetPath(stops)
+      // A straight line between real coordinates, rather than a fabricated
+      // "street-following" path with no relationship to actual roads -
+      // real turn-by-turn routing would need a paid directions API.
+      const streetPath: [number, number][] = stops.map((s) => [s.lat, s.lng])
 
       // Draw route line
       const routeLine = L.polyline(streetPath, {

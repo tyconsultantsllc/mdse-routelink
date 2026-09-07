@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { generateMultiStopStreetPath } from "@/lib/route-utils"
 
 interface Driver {
   id: number
@@ -18,6 +17,11 @@ interface Route {
   id: number
   name: string
   stops: number
+  stopDetails?: {
+    stop_order: number
+    dropoff_address: string
+    pharmacies?: { name: string; address: string; latitude: number | null; longitude: number | null } | null
+  }[]
   priority: string
   status: string
 }
@@ -35,36 +39,6 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
   const routeLinesRef = useRef<Map<number, L.Polyline>>(new Map())
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const routeCoordinates = [
-    {
-      id: 1,
-      stops: [
-        { lat: 33.7175, lng: -117.8311 },
-        { lat: 33.7456, lng: -117.8678 },
-        { lat: 33.7123, lng: -117.8901 },
-      ],
-    },
-    {
-      id: 2,
-      stops: [
-        { lat: 33.7456, lng: -117.8678 },
-        { lat: 33.7789, lng: -117.8234 },
-        { lat: 33.7234, lng: -117.8567 },
-        { lat: 33.7567, lng: -117.8123 },
-        { lat: 33.789, lng: -117.8456 },
-      ],
-    },
-    {
-      id: 3,
-      stops: [
-        { lat: 33.689, lng: -117.8234 },
-        { lat: 33.6567, lng: -117.8567 },
-        { lat: 33.6234, lng: -117.889 },
-        { lat: 33.6789, lng: -117.8123 },
-      ],
-    },
-  ]
-
   useEffect(() => {
     if (!containerRef.current) {
       return
@@ -76,7 +50,6 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
 
     try {
       const map = L.map(containerRef.current, {
-        tap: true,
         touchZoom: true,
         dragging: true,
         zoomControl: true,
@@ -116,16 +89,16 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
   }, [])
 
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!mapRef.current || routes.length === 0) return
 
-    // Clear existing route lines
-    routeLinesRef.current.forEach((line) => mapRef.current?.removeLayer(line))
-    routeLinesRef.current.clear()
+    let cancelled = false
 
-    // Draw routes
-    routeCoordinates.forEach((routeData) => {
-      const route = routes.find((r) => r.id === routeData.id)
-      if (!route) return
+    const drawRoutes = async () => {
+      // Clear existing route lines
+      routeLinesRef.current.forEach((line) => mapRef.current?.removeLayer(line))
+      routeLinesRef.current.clear()
+
+      const { geocodeAddress } = await import("@/lib/geocode")
 
       const getPriorityColor = (priority: string) => {
         switch (priority) {
@@ -142,65 +115,93 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
         }
       }
 
-      const color = getPriorityColor(route.priority)
+      for (const route of routes as any[]) {
+        const stopDetails = [...(route.stopDetails || [])]
+        if (stopDetails.length === 0) continue
 
-      const streetPath = generateMultiStopStreetPath(routeData.stops)
+        const color = getPriorityColor(route.priority)
+        const points: [number, number][] = []
+        const pointLabels: string[] = []
 
-      // Draw route line following streets
-      const routeLine = L.polyline(streetPath, {
-        color: color,
-        weight: 4,
-        opacity: 0.7,
-        dashArray: route.status === "pending" ? "10, 10" : undefined,
-      }).addTo(mapRef.current!)
+        for (const stop of stopDetails) {
+          if (stop.pharmacies?.latitude != null && stop.pharmacies?.longitude != null) {
+            points.push([stop.pharmacies.latitude, stop.pharmacies.longitude])
+            pointLabels.push(stop.pharmacies.name || "Pickup")
+          }
+          if (stop.dropoff_address) {
+            const coords = await geocodeAddress(stop.dropoff_address)
+            if (cancelled) return
+            if (coords) {
+              points.push([coords.lat, coords.lng])
+              pointLabels.push("Delivery")
+              await new Promise((resolve) => setTimeout(resolve, 1100))
+            }
+          }
+        }
 
-      routeLine.bindPopup(`
-        <div class="p-2">
-          <p class="font-medium">${route.name}</p>
-          <p class="text-xs text-gray-600">${route.stops} stops</p>
-          <p class="text-xs mt-1">
-            <span class="inline-block px-2 py-0.5 rounded text-white" style="background-color: ${color}">
-              ${route.priority.toUpperCase()}
-            </span>
-          </p>
-        </div>
-      `)
+        if (points.length === 0) continue
 
-      routeLinesRef.current.set(route.id, routeLine)
+        // A straight line between real coordinates, rather than a
+        // fabricated "street-following" path with no relationship to
+        // actual roads.
+        const routeLine = L.polyline(points, {
+          color,
+          weight: 4,
+          opacity: 0.7,
+          dashArray: route.status === "pending" ? "10, 10" : undefined,
+        }).addTo(mapRef.current!)
 
-      // Add markers for stops
-      routeData.stops.forEach((stop, index) => {
-        const isFirst = index === 0
-        const isLast = index === routeData.stops.length - 1
+        routeLine.bindPopup(`
+          <div class="p-2">
+            <p class="font-medium">${route.name}</p>
+            <p class="text-xs text-gray-600">${stopDetails.length} stops</p>
+            <p class="text-xs mt-1">
+              <span class="inline-block px-2 py-0.5 rounded text-white" style="background-color: ${color}">
+                ${(route.priority || "").toUpperCase()}
+              </span>
+            </p>
+          </div>
+        `)
 
-        const stopIcon = L.divIcon({
-          className: "custom-stop-marker",
-          html: `
-            <div style="
-              background: ${isFirst ? "#10b981" : isLast ? "#ef4444" : color};
-              border: 2px solid white;
-              border-radius: 50%;
-              width: 16px;
-              height: 16px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            "></div>
-          `,
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
+        routeLinesRef.current.set(route.id, routeLine)
+
+        points.forEach((point, index) => {
+          const isFirst = index === 0
+          const isLast = index === points.length - 1
+
+          const stopIcon = L.divIcon({
+            className: "custom-stop-marker",
+            html: `
+              <div style="
+                background: ${isFirst ? "#10b981" : isLast ? "#ef4444" : color};
+                border: 2px solid white;
+                border-radius: 50%;
+                width: 16px;
+                height: 16px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              "></div>
+            `,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          })
+
+          L.marker(point, { icon: stopIcon })
+            .addTo(mapRef.current!)
+            .bindPopup(`
+              <div class="p-2">
+                <p class="text-xs font-medium">${route.name}</p>
+                <p class="text-xs text-gray-600">${pointLabels[index] || (isFirst ? "Pickup" : isLast ? "Final Delivery" : `Stop ${index}`)}</p>
+              </div>
+            `)
         })
+      }
+    }
 
-        L.marker([stop.lat, stop.lng], { icon: stopIcon })
-          .addTo(mapRef.current!)
-          .bindPopup(`
-            <div class="p-2">
-              <p class="text-xs font-medium">${route.name}</p>
-              <p class="text-xs text-gray-600">
-                ${isFirst ? "Pickup" : isLast ? "Final Delivery" : `Stop ${index}`}
-              </p>
-            </div>
-          `)
-      })
-    })
+    drawRoutes()
+
+    return () => {
+      cancelled = true
+    }
   }, [routes])
 
   useEffect(() => {

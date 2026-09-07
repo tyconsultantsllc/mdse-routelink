@@ -42,16 +42,23 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
   const fetchDrivers = async () => {
     try {
       setLoading(true)
-      const { getUsers } = await import("@/app/actions/data-actions")
-      const users = await getUsers()
+      const { getUsers, getRoutes } = await import("@/app/actions/data-actions")
+      const [users, routes] = await Promise.all([getUsers(), getRoutes()])
       
-      const driverUsers = users.filter((u: any) => u.role === "driver").map((u: any) => ({
-        id: u.id,
-        name: `${u.first_name} ${u.last_name}`,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-        activeRoutes: 0, // TODO: Calculate from routes table
-        status: "available" as const, // TODO: Get from drivers table
-      }))
+      const driverUsers = users.filter((u: any) => u.role === "driver").map((u: any) => {
+        const activeRoutes = routes.filter(
+          (r: any) => r.driver_id === u.id && (r.status === "pending" || r.status === "in-progress"),
+        ).length
+        const rawStatus = u.drivers?.[0]?.status
+
+        return {
+          id: u.id,
+          name: `${u.first_name} ${u.last_name}`,
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+          activeRoutes,
+          status: rawStatus === "offline" ? ("off-duty" as const) : activeRoutes > 0 ? ("busy" as const) : ("available" as const),
+        }
+      })
       
       setDrivers(driverUsers)
     } catch (error) {
