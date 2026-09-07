@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { Card } from "@/components/ui/card"
@@ -17,14 +17,44 @@ import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload } from "lucide
 export default function SettingsPage() {
   const { toast } = useToast()
   const [notifications] = useState([])
+  const [adminUserId, setAdminUserId] = useState("")
 
   // Profile settings
   const [profileData, setProfileData] = useState({
-    name: "Admin User",
-    email: "admin@mdseroutelink.com",
-    phone: "+1 (555) 123-4567",
-    role: "Super Admin",
+    name: "",
+    email: "",
+    phone: "",
+    role: "Admin",
   })
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+
+      setAdminUserId(user.id)
+
+      const { data } = await supabase
+        .from("users")
+        .select("first_name, last_name, email, phone")
+        .eq("id", user.id)
+        .single()
+
+      if (data) {
+        setProfileData({
+          name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+          email: data.email || "",
+          phone: data.phone || "",
+          role: "Admin",
+        })
+      }
+    }
+    loadProfile()
+  }, [])
 
   // Notification settings
   const [notificationSettings, setNotificationSettings] = useState({
@@ -56,11 +86,29 @@ export default function SettingsPage() {
     autoLogout: 30,
   })
 
-  const handleSaveProfile = () => {
-    toast({
-      title: "Profile Updated",
-      description: "Your profile information has been saved successfully",
-    })
+  const handleSaveProfile = async () => {
+    try {
+      const { updateUser } = await import("@/app/actions/data-actions")
+      const [firstName, ...rest] = profileData.name.trim().split(" ")
+      const lastName = rest.join(" ")
+
+      await updateUser(adminUserId, {
+        firstName,
+        lastName,
+        phone: profileData.phone,
+      })
+
+      toast({
+        title: "Profile Updated",
+        description: "Your profile information has been saved successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save profile",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleSaveNotifications = () => {
@@ -148,12 +196,10 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email Address</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={profileData.email}
-                        onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      />
+                      <Input id="email" type="email" value={profileData.email} disabled />
+                      <p className="text-xs text-muted-foreground">
+                        Changing your login email isn't supported here yet.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone Number</Label>

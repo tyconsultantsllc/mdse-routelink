@@ -30,6 +30,7 @@ import { useToast } from "@/components/ui/use-toast"
 export default function PerformanceDashboard() {
   const [timeRange, setTimeRange] = useState("30")
   const [driverPerformance, setDriverPerformance] = useState<any[]>([])
+  const [allLogs, setAllLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
@@ -60,6 +61,7 @@ export default function PerformanceDashboard() {
       })
       
       setDriverPerformance(performance)
+      setAllLogs(stats.logs || [])
     } catch (error) {
       console.error('Error fetching performance data:', error)
       toast({
@@ -81,22 +83,30 @@ export default function PerformanceDashboard() {
     : 0
   const topPerformer = driverPerformance[0]
 
-  const weeklyData = [
-    { day: "Mon", deliveries: 0, onTime: 0 },
-    { day: "Tue", deliveries: 0, onTime: 0 },
-    { day: "Wed", deliveries: 0, onTime: 0 },
-    { day: "Thu", deliveries: 0, onTime: 0 },
-    { day: "Fri", deliveries: 0, onTime: 0 },
-    { day: "Sat", deliveries: 0, onTime: 0 },
-    { day: "Sun", deliveries: 0, onTime: 0 },
-  ]
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const today = new Date()
+  const weeklyData = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() - (6 - i))
+    const dayLogs = allLogs.filter((log: any) => new Date(log.timestamp).toDateString() === d.toDateString())
+    return {
+      day: dayNames[d.getDay()],
+      deliveries: dayLogs.filter((l: any) => l.action === 'delivered').length,
+      onTime: dayLogs.filter((l: any) => l.action === 'failed').length,
+    }
+  })
 
+  const deliveredCount = allLogs.filter((l: any) => l.action === 'delivered').length
+  const failedCount = allLogs.filter((l: any) => l.action === 'failed').length
   const deliveryStatusData = [
-    { name: "On Time", value: totalDeliveries, color: "#22c55e" },
-    { name: "Delayed", value: 0, color: "#f59e0b" },
-    { name: "Failed", value: 0, color: "#ef4444" },
+    { name: "Delivered", value: deliveredCount, color: "#22c55e" },
+    { name: "Failed", value: failedCount, color: "#ef4444" },
   ]
 
+  // avgTime/onTimeRate below are intentionally left at 0, not fabricated -
+  // same reasoning as app/admin/reports/page.tsx: there's no defined "on
+  // time" threshold in the data model (on time relative to what?), so any
+  // number here would be invented, not measured.
   const monthlyTrend = [
     { month: "Jan", avgTime: 0, onTimeRate: 0 },
     { month: "Feb", avgTime: 0, onTimeRate: 0 },
@@ -223,8 +233,8 @@ export default function PerformanceDashboard() {
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Bar dataKey="deliveries" fill="#3b82f6" name="Total Deliveries" />
-                          <Bar dataKey="onTime" fill="#22c55e" name="On Time" />
+                          <Bar dataKey="deliveries" fill="#3b82f6" name="Delivered" />
+                          <Bar dataKey="onTime" fill="#ef4444" name="Failed" />
                         </BarChart>
                       </ResponsiveContainer>
                     </Card>

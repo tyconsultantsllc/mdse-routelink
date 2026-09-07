@@ -73,7 +73,7 @@ export default function CalendarView() {
             startTime: new Date(route.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             endTime: route.end_time ? new Date(route.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
             priority: route.priority || 'medium',
-            stops: 0, // Would need to join with route_stops table
+            stops: route.route_stops?.length || 0,
             status: route.status || 'scheduled'
           })
         }
