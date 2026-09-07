@@ -12,11 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useToast } from "@/hooks/use-toast"
+import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload } from "lucide-react"
 
 export default function SettingsPage() {
   const { toast } = useToast()
   const [adminUserId, setAdminUserId] = useState("")
+  const [changeEmailOpen, setChangeEmailOpen] = useState(false)
 
   // Profile settings
   const [profileData, setProfileData] = useState({
@@ -230,10 +232,12 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email Address</Label>
-                      <Input id="email" type="email" value={profileData.email} disabled />
-                      <p className="text-xs text-muted-foreground">
-                        Changing your login email isn't supported here yet.
-                      </p>
+                      <div className="flex gap-2">
+                        <Input id="email" type="email" value={profileData.email} disabled className="flex-1" />
+                        <Button type="button" variant="outline" onClick={() => setChangeEmailOpen(true)}>
+                          Change
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone Number</Label>
@@ -612,6 +616,7 @@ export default function SettingsPage() {
           </Tabs>
         </div>
       </div>
+      <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={profileData.email} />
     </div>
   )
 }

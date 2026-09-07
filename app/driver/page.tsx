@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut } from 'lucide-react'
+import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Mail } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
 import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation, failDeliveryStop } from "@/lib/driver-actions"
 import { AnnouncementBanner } from "@/components/announcement-banner"
+import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 
@@ -61,6 +62,8 @@ export default function DriverTrackingPage() {
   const [routes, setRoutes] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
   const [driverId, setDriverId] = useState<string | null>(null)
+  const [driverEmail, setDriverEmail] = useState("")
+  const [changeEmailOpen, setChangeEmailOpen] = useState(false)
 
   useEffect(() => {
     fetchDriverRoutes()
@@ -80,6 +83,7 @@ export default function DriverTrackingPage() {
       if (!user) return
 
       setDriverId(user.id)
+      setDriverEmail(user.email || "")
 
       const { data, error } = await supabase
         .from("routes")
@@ -416,6 +420,21 @@ export default function DriverTrackingPage() {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setChangeEmailOpen(true)}
+                      className="h-9 w-9 md:h-10 md:w-10"
+                    >
+                      <Mail className="h-4 w-4 md:h-5 md:w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Change Email</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={handleLogout} className="h-9 w-9 md:h-10 md:w-10">
                       <LogOut className="h-4 w-4 md:h-5 md:w-5" />
                     </Button>
@@ -736,6 +755,8 @@ export default function DriverTrackingPage() {
       />
 
       {driverId && <DriverMessagingWidget driverId={driverId} />}
+
+      <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={driverEmail} />
     </div>
   )
 }

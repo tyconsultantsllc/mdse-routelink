@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle } from 'lucide-react'
+import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +20,7 @@ import {
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
+import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
@@ -36,6 +37,8 @@ export default function PharmacyDashboard() {
   const [pharmacyName, setPharmacyName] = useState("")
   const [pharmacyId, setPharmacyId] = useState("")
   const [userId, setUserId] = useState("")
+  const [userEmail, setUserEmail] = useState("")
+  const [changeEmailOpen, setChangeEmailOpen] = useState(false)
   const [deliveries, setDeliveries] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
@@ -60,6 +63,7 @@ export default function PharmacyDashboard() {
       if (!user) return
 
       setUserId(user.id)
+      setUserEmail(user.email || "")
 
       // Get pharmacy ID from pharmacy_users table
       const { data: pharmacyUser, error: pharmacyUserError } = await supabase
@@ -265,6 +269,19 @@ export default function PharmacyDashboard() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Contact Dispatch</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setChangeEmailOpen(true)}
+                    className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
+                  >
+                    <Mail className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Change Email</TooltipContent>
               </Tooltip>
               <Dialog open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen}>
                 <DialogTrigger asChild>
@@ -479,6 +496,7 @@ export default function PharmacyDashboard() {
           onSuccess={fetchPharmacyDeliveries}
         />
       )}
+      <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={userEmail} />
     </TooltipProvider>
   )
 }
