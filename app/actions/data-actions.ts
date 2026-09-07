@@ -342,6 +342,9 @@ export async function createRoute(routeData: {
   endTime?: string
   estimatedDuration?: number
   priority: string
+  payRouteType?: string
+  isLateNight?: boolean
+  isHighVolume?: boolean
   stops: Array<{
     pharmacyId: string
     pickupAddress: string
@@ -381,6 +384,9 @@ export async function createRoute(routeData: {
       end_time: endTimeTimestamp,
       estimated_duration: routeData.estimatedDuration || null,
       priority: routeData.priority,
+      pay_route_type: routeData.payRouteType || null,
+      is_late_night: routeData.isLateNight || false,
+      is_high_volume: routeData.isHighVolume || false,
       status: 'pending',
       created_at: new Date().toISOString(),
     })
@@ -512,6 +518,9 @@ export async function updateRoute(routeId: number, routeData: {
   estimatedDuration?: number
   priority: string
   status: string
+  payRouteType?: string
+  isLateNight?: boolean
+  isHighVolume?: boolean
   stops: Array<{
     id?: string
     pharmacyId: string
@@ -556,6 +565,9 @@ export async function updateRoute(routeId: number, routeData: {
       estimated_duration: routeData.estimatedDuration,
       priority: routeData.priority,
       status: routeData.status,
+      pay_route_type: routeData.payRouteType || null,
+      is_late_night: routeData.isLateNight || false,
+      is_high_volume: routeData.isHighVolume || false,
       updated_at: new Date().toISOString(),
     })
     .eq('id', routeId)
