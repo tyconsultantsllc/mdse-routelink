@@ -114,7 +114,7 @@ export async function getDeliveryLogs(limit = 500) {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('delivery_logs')
-    .select('*')
+    .select('*, routes(name, priority), route_stops(dropoff_address, recipient_name, signature_path, status)')
     .order('timestamp', { ascending: false })
     .limit(limit)
   

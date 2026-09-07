@@ -144,29 +144,6 @@ export function AdvancedFilterPanel({ filters, onFiltersChange, onClose, onApply
             </SelectContent>
           </Select>
         </div>
-
-        {/* Number of Stops Range */}
-        <div className="space-y-2">
-          <Label htmlFor="minStops">Min Stops</Label>
-          <Input
-            id="minStops"
-            type="number"
-            placeholder="0"
-            value={filters.minStops || ""}
-            onChange={(e) => onFiltersChange({ ...filters, minStops: Number.parseInt(e.target.value) || undefined })}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="maxStops">Max Stops</Label>
-          <Input
-            id="maxStops"
-            type="number"
-            placeholder="100"
-            value={filters.maxStops || ""}
-            onChange={(e) => onFiltersChange({ ...filters, maxStops: Number.parseInt(e.target.value) || undefined })}
-          />
-        </div>
       </div>
 
       {/* Status Checkboxes */}

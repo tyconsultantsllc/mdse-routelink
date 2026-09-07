@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { AdvancedFilterPanel } from "@/components/advanced-filter-panel"
+import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { createClient } from "@/lib/supabase/client"
 import { getDeliveryLogs, getUsers, getPharmacies } from "@/app/actions/data-actions"
 
@@ -24,13 +25,12 @@ export default function DeliveryLogs() {
     pharmacy: "all",
     status: [],
     priority: [],
-    minStops: undefined,
-    maxStops: undefined,
   })
 
   const [appliedFilters, setAppliedFilters] = useState<any>({})
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedDelivery, setSelectedDelivery] = useState<any>(null)
 
   useEffect(() => {
     fetchDeliveryLogs()
@@ -58,8 +58,13 @@ export default function DeliveryLogs() {
             date: new Date(d.timestamp || d.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
             time: new Date(d.timestamp || d.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
             status: d.action === 'delivered' ? 'completed' : d.action === 'failed' ? 'failed' : (d.action || 'pending'),
-            priority: "medium",
-            stops: 1,
+            priority: d.routes?.priority || "medium",
+            routeName: d.routes?.name || "Unknown Route",
+            routeStopId: d.route_stop_id,
+            dropoffAddress: d.route_stops?.dropoff_address || "N/A",
+            recipientName: d.route_stops?.recipient_name || null,
+            hasSignature: !!d.route_stops?.signature_path,
+            failureReason: d.action === 'failed' ? (d.notes || "No reason provided") : null,
           }
         }) || []
       )
@@ -88,14 +93,6 @@ export default function DeliveryLogs() {
 
     if (appliedFilters.priority && appliedFilters.priority.length > 0) {
       if (!appliedFilters.priority.includes(delivery.priority)) return false
-    }
-
-    if (appliedFilters.minStops !== undefined) {
-      if (delivery.stops < appliedFilters.minStops) return false
-    }
-
-    if (appliedFilters.maxStops !== undefined) {
-      if (delivery.stops > appliedFilters.maxStops) return false
     }
 
     return true
@@ -128,8 +125,6 @@ export default function DeliveryLogs() {
     appliedFilters.dateTo,
     appliedFilters.driver !== "all" ? appliedFilters.driver : null,
     appliedFilters.pharmacy !== "all" ? appliedFilters.pharmacy : null,
-    appliedFilters.minStops,
-    appliedFilters.maxStops,
   ].filter(Boolean).length
 
   const totalResults = filteredDeliveries.length
@@ -252,9 +247,6 @@ export default function DeliveryLogs() {
                         Time
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Stops
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Priority
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -302,9 +294,6 @@ export default function DeliveryLogs() {
                             <div className="text-sm text-muted-foreground">{delivery.time}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-foreground">{delivery.stops}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
                             <Badge
                               className={
                                 delivery.priority === "urgent"
@@ -339,7 +328,7 @@ export default function DeliveryLogs() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="link" className="p-0 h-auto">
+                                <Button variant="link" className="p-0 h-auto" onClick={() => setSelectedDelivery(delivery)}>
                                   View Details
                                 </Button>
                               </TooltipTrigger>
@@ -396,6 +385,11 @@ export default function DeliveryLogs() {
           </div>
         </div>
       </div>
+      <DeliveryDetailsModal
+        open={!!selectedDelivery}
+        onOpenChange={(open) => !open && setSelectedDelivery(null)}
+        delivery={selectedDelivery}
+      />
     </TooltipProvider>
   )
 }
