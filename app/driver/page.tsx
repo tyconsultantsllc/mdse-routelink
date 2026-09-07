@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Mail } from 'lucide-react'
+import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
 import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation, failDeliveryStop } from "@/lib/driver-actions"
 import { AnnouncementBanner } from "@/components/announcement-banner"
-import { ChangeEmailDialog } from "@/components/change-email-dialog"
+import { DriverSettingsDialog } from "@/components/driver-settings-dialog"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 
@@ -68,7 +68,7 @@ export default function DriverTrackingPage() {
   const [loading, setLoading] = useState(true)
   const [driverId, setDriverId] = useState<string | null>(null)
   const [driverEmail, setDriverEmail] = useState("")
-  const [changeEmailOpen, setChangeEmailOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     fetchDriverRoutes()
@@ -132,6 +132,11 @@ export default function DriverTrackingPage() {
 
       setDriverId(user.id)
       setDriverEmail(user.email || "")
+
+      const { data: driverRow } = await supabase.from("drivers").select("status").eq("id", user.id).single()
+      if (driverRow) {
+        setIsTracking(driverRow.status !== "offline")
+      }
 
       const { data, error } = await supabase
         .from("routes")
@@ -370,6 +375,29 @@ export default function DriverTrackingPage() {
     }
   }
 
+  const handleClockToggle = async () => {
+    const newTrackingState = !isTracking
+    setIsTracking(newTrackingState)
+
+    if (!driverId) return
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("drivers")
+        .update({ status: newTrackingState ? "available" : "offline" })
+        .eq("id", driverId)
+
+      if (error) throw error
+    } catch (error) {
+      console.error("Error updating clock status:", error)
+      toast({
+        title: "Error",
+        description: "Could not save your clock status. It may not persist if you refresh.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleLogout = async () => {
     try {
       const supabase = createClient()
@@ -484,13 +512,13 @@ export default function DriverTrackingPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setChangeEmailOpen(true)}
+                      onClick={() => setSettingsOpen(true)}
                       className="h-9 w-9 md:h-10 md:w-10"
                     >
-                      <Mail className="h-4 w-4 md:h-5 md:w-5" />
+                      <Settings className="h-4 w-4 md:h-5 md:w-5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Change Email</TooltipContent>
+                  <TooltipContent>Settings</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               <TooltipProvider>
@@ -524,7 +552,7 @@ export default function DriverTrackingPage() {
                       {isTracking ? "On Duty" : "Off Duty"}
                     </p>
                   </div>
-                  <Button onClick={() => setIsTracking(!isTracking)} size="lg" className="min-h-[44px] min-w-[100px]">
+                  <Button onClick={handleClockToggle} size="lg" className="min-h-[44px] min-w-[100px]">
                     {isTracking ? "Clock Out" : "Clock In"}
                   </Button>
                 </div>
@@ -817,7 +845,12 @@ export default function DriverTrackingPage() {
 
       {driverId && <DriverMessagingWidget driverId={driverId} />}
 
-      <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={driverEmail} />
+      <DriverSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        driverId={driverId || ""}
+        driverEmail={driverEmail}
+      />
     </div>
   )
 }

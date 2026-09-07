@@ -59,7 +59,9 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
     if (!isOpen) return
     getOrCreateDispatchConversation(driverId).then((id) => {
       setDispatchConversationId(id)
-      markConversationRead(id, driverId).then(() => setUnreadCount(0))
+      markConversationRead(id, driverId)
+        .then(() => setUnreadCount(0))
+        .catch((err) => console.error("Error marking conversation read on open:", err))
     })
   }, [isOpen, driverId])
 
@@ -90,7 +92,18 @@ export function DriverMessagingWidget({ driverId }: DriverMessagingWidgetProps) 
         )}
       </Button>
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          setIsOpen(open)
+          if (!open && dispatchConversationId) {
+            markConversationRead(dispatchConversationId, driverId)
+              .then(() => getUnreadCountForDriver(driverId))
+              .then(setUnreadCount)
+              .catch((err) => console.error("Error marking conversation read on close:", err))
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md p-0 gap-0">
           <DialogHeader className="p-4 pb-0">
             <DialogTitle>Messages</DialogTitle>

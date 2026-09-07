@@ -236,6 +236,43 @@ export async function adminUpdateUserEmail(userId: string, newEmail: string) {
   await supabase.from('users').update({ email: newEmail }).eq('id', userId)
 }
 
+export async function updateOwnProfile(updates: {
+  firstName?: string
+  lastName?: string
+  phone?: string
+  vehicleType?: string
+  vehiclePlate?: string
+  licenseNumber?: string
+}) {
+  const { userId, role } = await verifyAuth()
+
+  const supabase = createAdminClient()
+
+  const userUpdates: Record<string, any> = {}
+  if (updates.firstName !== undefined) userUpdates.first_name = updates.firstName
+  if (updates.lastName !== undefined) userUpdates.last_name = updates.lastName
+  if (updates.phone !== undefined) userUpdates.phone = updates.phone
+
+  if (Object.keys(userUpdates).length > 0) {
+    const { error } = await supabase.from('users').update(userUpdates).eq('id', userId)
+    if (error) throw error
+  }
+
+  if (role === 'driver') {
+    const driverUpdates: Record<string, any> = {}
+    if (updates.vehicleType !== undefined) driverUpdates.vehicle_type = updates.vehicleType
+    if (updates.vehiclePlate !== undefined) driverUpdates.vehicle_plate = updates.vehiclePlate
+    if (updates.licenseNumber !== undefined) driverUpdates.license_number = updates.licenseNumber
+
+    if (Object.keys(driverUpdates).length > 0) {
+      const { error } = await supabase.from('drivers').update(driverUpdates).eq('id', userId)
+      if (error) throw error
+    }
+  }
+
+  return { success: true }
+}
+
 export async function updateUser(userId: string, updates: {
   firstName?: string
   lastName?: string
