@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Home,
   Users,
@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useToast } from "@/hooks/use-toast"
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: Home },
@@ -47,8 +48,49 @@ const navigation = [
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { toast } = useToast()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [openReportsCount, setOpenReportsCount] = useState(0)
+  const [adminName, setAdminName] = useState("Admin User")
+
+  useEffect(() => {
+    const loadAdminProfile = async () => {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data } = await supabase.from("users").select("first_name, last_name").eq("id", user.id).single()
+      if (data) {
+        const name = `${data.first_name || ""} ${data.last_name || ""}`.trim()
+        if (name) setAdminName(name)
+      }
+    }
+    loadAdminProfile()
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out",
+      })
+    } catch (error) {
+      console.error("Sign out error:", error)
+      toast({
+        title: "Logged Out",
+        description: "Signed out locally - your session may still be active on the server.",
+      })
+    } finally {
+      router.push("/auth/login")
+    }
+  }
 
   useEffect(() => {
     const checkReports = async () => {
@@ -153,13 +195,13 @@ export function AdminSidebar() {
                   <AvatarFallback>AD</AvatarFallback>
                 </Avatar>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-foreground">Admin User</p>
-                  <p className="text-xs font-medium text-muted-foreground">Super Admin</p>
+                  <p className="text-sm font-medium text-foreground">{adminName}</p>
+                  <p className="text-xs font-medium text-muted-foreground">Admin</p>
                 </div>
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" className="mt-4 w-full bg-transparent">
+                  <Button variant="outline" size="sm" className="mt-4 w-full bg-transparent" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
                   </Button>
