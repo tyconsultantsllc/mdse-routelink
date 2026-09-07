@@ -40,6 +40,7 @@ export default function PharmacyDashboard() {
   const [loading, setLoading] = useState(true)
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
+  const [myReports, setMyReports] = useState<any[]>([])
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -70,6 +71,13 @@ export default function PharmacyDashboard() {
       if (pharmacyUserError) throw pharmacyUserError
 
       setPharmacyId(pharmacyUser.pharmacy_id)
+
+      const { data: reportsData } = await supabase
+        .from("pharmacy_reports")
+        .select("*")
+        .eq("pharmacy_id", pharmacyUser.pharmacy_id)
+        .order("created_at", { ascending: false })
+      setMyReports(reportsData || [])
 
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
@@ -389,6 +397,39 @@ export default function PharmacyDashboard() {
             </CardContent>
           </Card>
 
+          {/* My Reports */}
+          {myReports.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base md:text-lg">My Reports</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {myReports.map((report) => (
+                    <div
+                      key={report.id}
+                      className="flex items-start justify-between gap-3 p-3 border rounded-lg"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground">{report.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(report.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      {report.status === "resolved" ? (
+                        <Badge className="bg-green-500 shrink-0">Resolved</Badge>
+                      ) : (
+                        <Badge variant="outline" className="shrink-0">
+                          Open
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Recent Completed Deliveries */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -435,6 +476,7 @@ export default function PharmacyDashboard() {
           onOpenChange={setReportModalOpen}
           pharmacyId={pharmacyId}
           userId={userId}
+          onSuccess={fetchPharmacyDeliveries}
         />
       )}
     </TooltipProvider>

@@ -16,6 +16,7 @@ interface PharmacyReportModalProps {
   onOpenChange: (open: boolean) => void
   pharmacyId: string
   userId: string
+  onSuccess?: () => void
 }
 
 const REPORT_TYPES: { value: PharmacyReportType; label: string; description: string }[] = [
@@ -24,7 +25,7 @@ const REPORT_TYPES: { value: PharmacyReportType; label: string; description: str
   { value: "other", label: "Other", description: "Anything else admins should know about" },
 ]
 
-export function PharmacyReportModal({ open, onOpenChange, pharmacyId, userId }: PharmacyReportModalProps) {
+export function PharmacyReportModal({ open, onOpenChange, pharmacyId, userId, onSuccess }: PharmacyReportModalProps) {
   const [type, setType] = useState<PharmacyReportType>("problem")
   const [message, setMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -45,6 +46,7 @@ export function PharmacyReportModal({ open, onOpenChange, pharmacyId, userId }: 
       setMessage("")
       setType("problem")
       onOpenChange(false)
+      onSuccess?.()
     } catch (error: any) {
       toast({
         title: "Error",

@@ -84,7 +84,20 @@ export default function SettingsPage() {
     currency: "USD",
     language: "en",
     autoLogout: 30,
+    onTimeGracePeriodMinutes: 15,
   })
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { getAppSetting } = await import("@/lib/app-settings")
+      const savedCompany = await getAppSetting("company_settings")
+      if (savedCompany) setCompanySettings((prev) => ({ ...prev, ...savedCompany }))
+
+      const savedSystem = await getAppSetting("system_settings")
+      if (savedSystem) setSystemSettings((prev) => ({ ...prev, ...savedSystem }))
+    }
+    loadSettings()
+  }, [])
 
   const handleSaveProfile = async () => {
     try {
@@ -118,18 +131,40 @@ export default function SettingsPage() {
     })
   }
 
-  const handleSaveCompany = () => {
-    toast({
-      title: "Company Settings Updated",
-      description: "Company information has been saved successfully",
-    })
+  const handleSaveCompany = async () => {
+    try {
+      const { setAppSetting } = await import("@/lib/app-settings")
+      await setAppSetting("company_settings", companySettings)
+
+      toast({
+        title: "Company Settings Updated",
+        description: "Company information has been saved successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save company settings",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleSaveSystem = () => {
-    toast({
-      title: "System Settings Updated",
-      description: "System preferences have been saved successfully",
-    })
+  const handleSaveSystem = async () => {
+    try {
+      const { setAppSetting } = await import("@/lib/app-settings")
+      await setAppSetting("system_settings", systemSettings)
+
+      toast({
+        title: "System Settings Updated",
+        description: "System preferences have been saved successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save system settings",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -521,6 +556,25 @@ export default function SettingsPage() {
                     />
                     <p className="text-sm text-muted-foreground">
                       Automatically log out after specified minutes of inactivity
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="onTimeGracePeriod">On-Time Grace Period (minutes)</Label>
+                    <Input
+                      id="onTimeGracePeriod"
+                      type="number"
+                      value={systemSettings.onTimeGracePeriodMinutes}
+                      onChange={(e) =>
+                        setSystemSettings({
+                          ...systemSettings,
+                          onTimeGracePeriodMinutes: Number.parseInt(e.target.value),
+                        })
+                      }
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      A delivery counts as on-time if completed within this many minutes of a route's scheduled end
+                      time. Used in Reports and Performance.
                     </p>
                   </div>
 

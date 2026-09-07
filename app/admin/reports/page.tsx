@@ -18,6 +18,7 @@ import { Line, LineChart, Bar, BarChart, Pie, PieChart, XAxis, YAxis, CartesianG
 import { ExportDialog } from "@/components/export-dialog"
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers } from "@/app/actions/data-actions"
+import { calculateOnTimeRate, isDeliveryOnTime, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function Reports() {
@@ -25,6 +26,8 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>(null)
   const { toast } = useToast()
+
+  const [gracePeriod, setGracePeriod] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
 
   useEffect(() => {
     fetchStats()
@@ -34,6 +37,12 @@ export default function Reports() {
     try {
       const [dashboardStats, users] = await Promise.all([getDashboardStats(), getUsers()])
       setStats({ ...dashboardStats, users })
+
+      const { getAppSetting } = await import("@/lib/app-settings")
+      const systemSettings = await getAppSetting<{ onTimeGracePeriodMinutes?: number }>("system_settings")
+      if (systemSettings?.onTimeGracePeriodMinutes != null) {
+        setGracePeriod(systemSettings.onTimeGracePeriodMinutes)
+      }
     } catch (error) {
       console.error('Error fetching stats:', error)
       toast({
@@ -49,11 +58,12 @@ export default function Reports() {
   const totalDeliveries = stats?.logs?.length || 0
   const failedDeliveries = stats?.logs?.filter((log: any) => log.action === 'failed').length || 0
   const successfulDeliveries = stats?.logs?.filter((log: any) => log.action === 'delivered').length || 0
-  // onTimeRate and avgDeliveryTime need a defined "on time" threshold that
-  // doesn't exist in the data model yet (e.g. comparing actual_delivery_time
-  // against an expected window) - left as 0 rather than inventing a number
-  const onTimeRate = 0
-  const avgDeliveryTime = 0
+
+  const routesById = new Map<string, { end_time: string | null }>(
+    (stats?.routes || []).map((r: any) => [r.id, { end_time: r.end_time }]),
+  )
+  const onTimeRate = stats?.logs ? calculateOnTimeRate(stats.logs, routesById, gracePeriod) : 0
+  const avgDeliveryTime = 0 // no reliable duration data source yet - see notes on the Performance page
 
   // Real month-by-month counts from actual delivery log timestamps, instead
   // of hardcoded zeros with all volume dumped into a single fake month
@@ -68,8 +78,14 @@ export default function Reports() {
     return { month: monthNames[d.getMonth()], deliveries: count }
   })
 
+  const onTimeDeliveredCount = (stats?.logs || []).filter(
+    (log: any) => log.action === 'delivered' && isDeliveryOnTime(log.timestamp, routesById.get(log.route_id)?.end_time, gracePeriod) === true,
+  ).length
+  const lateDeliveredCount = successfulDeliveries - onTimeDeliveredCount
+
   const statusData = [
-    { name: "Delivered", value: successfulDeliveries, color: "#10b981" },
+    { name: "On Time", value: onTimeDeliveredCount, color: "#10b981" },
+    { name: "Late", value: lateDeliveredCount, color: "#f59e0b" },
     { name: "Failed", value: failedDeliveries, color: "#ef4444" },
   ]
 

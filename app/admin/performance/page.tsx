@@ -25,12 +25,15 @@ import {
 } from "recharts"
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers } from "@/app/actions/data-actions"
+import { calculateOnTimeRate, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function PerformanceDashboard() {
   const [timeRange, setTimeRange] = useState("30")
   const [driverPerformance, setDriverPerformance] = useState<any[]>([])
   const [allLogs, setAllLogs] = useState<any[]>([])
+  const [allRoutes, setAllRoutes] = useState<any[]>([])
+  const [gracePeriodMinutes, setGracePeriodMinutes] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
@@ -41,27 +44,35 @@ export default function PerformanceDashboard() {
   const fetchPerformanceData = async () => {
     try {
       const [stats, users] = await Promise.all([getDashboardStats(), getUsers()])
-      
+
+      const { getAppSetting } = await import("@/lib/app-settings")
+      const systemSettings = await getAppSetting<{ onTimeGracePeriodMinutes?: number }>("system_settings")
+      const gracePeriod = systemSettings?.onTimeGracePeriodMinutes ?? DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES
+
+      const routesById = new Map(stats.routes.map((r: any) => [r.id, { end_time: r.end_time }]))
+
       // Calculate performance metrics for drivers
       const drivers = users.filter((u: any) => u.role === 'driver')
       const performance = drivers.map((driver: any) => {
         const driverLogs = stats.logs.filter((log: any) => log.driver_id === driver.id)
         const driverRoutes = stats.routes.filter((route: any) => route.driver_id === driver.id)
-        
+
         return {
           id: driver.id,
           name: `${driver.first_name} ${driver.last_name}`,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`,
           totalDeliveries: driverLogs.length,
-          onTimeRate: 0, // Would need actual delivery time data
-          avgDeliveryTime: 0, // Would need actual delivery time data
-          customerRating: 0, // Would need ratings table
+          onTimeRate: calculateOnTimeRate(driverLogs, routesById, gracePeriod),
+          avgDeliveryTime: 0, // no reliable duration data source yet
+          customerRating: 0, // no ratings system exists yet
           trend: 'up'
         }
       })
       
       setDriverPerformance(performance)
       setAllLogs(stats.logs || [])
+      setAllRoutes(stats.routes || [])
+      setGracePeriodMinutes(gracePeriod)
     } catch (error) {
       console.error('Error fetching performance data:', error)
       toast({
@@ -103,18 +114,23 @@ export default function PerformanceDashboard() {
     { name: "Failed", value: failedCount, color: "#ef4444" },
   ]
 
-  // avgTime/onTimeRate below are intentionally left at 0, not fabricated -
-  // same reasoning as app/admin/reports/page.tsx: there's no defined "on
-  // time" threshold in the data model (on time relative to what?), so any
-  // number here would be invented, not measured.
-  const monthlyTrend = [
-    { month: "Jan", avgTime: 0, onTimeRate: 0 },
-    { month: "Feb", avgTime: 0, onTimeRate: 0 },
-    { month: "Mar", avgTime: 0, onTimeRate: 0 },
-    { month: "Apr", avgTime: 0, onTimeRate: 0 },
-    { month: "May", avgTime: 0, onTimeRate: 0 },
-    { month: "Jun", avgTime: 0, onTimeRate: 0 },
-  ]
+  // avgTime is intentionally left at 0, not fabricated - no reliable
+  // duration data source exists yet. onTimeRate now uses the real
+  // calculation now that a grace-period definition exists.
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const routesByIdForTrend = new Map(allRoutes.map((r: any) => [r.id, { end_time: r.end_time }]))
+  const monthlyTrend = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1)
+    const monthLogs = allLogs.filter((log: any) => {
+      const logDate = new Date(log.timestamp)
+      return logDate.getFullYear() === d.getFullYear() && logDate.getMonth() === d.getMonth()
+    })
+    return {
+      month: monthNames[d.getMonth()],
+      avgTime: 0,
+      onTimeRate: calculateOnTimeRate(monthLogs, routesByIdForTrend, gracePeriodMinutes),
+    }
+  })
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
