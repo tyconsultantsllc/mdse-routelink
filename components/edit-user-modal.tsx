@@ -21,6 +21,7 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
+    email: "",
     phone: "",
     vehicleType: "",
     vehiclePlate: "",
@@ -34,6 +35,7 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
       setFormData({
         firstName: user.first_name || "",
         lastName: user.last_name || "",
+        email: user.email || "",
         phone: user.phone || "",
         vehicleType: user.drivers?.[0]?.vehicle_type || "",
         vehiclePlate: user.drivers?.[0]?.vehicle_plate || "",
@@ -47,8 +49,12 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
     setIsLoading(true)
 
     try {
-      const { updateUser } = await import("@/app/actions/data-actions")
-      
+      const { updateUser, adminUpdateUserEmail } = await import("@/app/actions/data-actions")
+
+      if (formData.email && formData.email !== user.email) {
+        await adminUpdateUserEmail(user.id, formData.email)
+      }
+
       await updateUser(user.id, {
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -105,6 +111,20 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              required
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Changing this immediately updates their login email - no confirmation needed from them.
+            </p>
           </div>
 
           <div>

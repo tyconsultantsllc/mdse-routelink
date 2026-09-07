@@ -207,6 +207,35 @@ export async function deleteUser(userId: string) {
   if (error) throw error
 }
 
+export async function adminUpdateUserEmail(userId: string, newEmail: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  // Uses the Auth Admin API (service role) rather than the self-service
+  // auth.updateUser() flow, since an admin changing someone else's email
+  // isn't operating in that user's own session. email_confirm:true applies
+  // it immediately rather than requiring a confirmation link - appropriate
+  // here since this is a trusted admin action, e.g. fixing a typo or
+  // helping someone who's lost access to their old email, not a
+  // self-service change that needs protection against hijacking.
+  const { error } = await supabase.auth.admin.updateUserById(userId, {
+    email: newEmail,
+    email_confirm: true,
+  })
+
+  if (error) throw error
+
+  // The trigger in 014_sync_email_updates.sql keeps public.users.email in
+  // sync automatically, but update it here too in case that migration
+  // hasn't been run yet on this database.
+  await supabase.from('users').update({ email: newEmail }).eq('id', userId)
+}
+
 export async function updateUser(userId: string, updates: {
   firstName?: string
   lastName?: string
