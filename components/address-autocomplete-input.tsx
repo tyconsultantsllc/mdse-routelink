@@ -10,6 +10,7 @@ interface AddressAutocompleteInputProps {
   onChange: (value: string) => void
   placeholder?: string
   required?: boolean
+  disabled?: boolean
 }
 
 export function AddressAutocompleteInput({
@@ -17,7 +18,8 @@ export function AddressAutocompleteInput({
   value,
   onChange,
   placeholder,
-  required
+  required,
+  disabled
 }: AddressAutocompleteInputProps) {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -97,6 +99,7 @@ export function AddressAutocompleteInput({
           onChange={handleInputChange}
           placeholder={placeholder}
           required={required}
+          disabled={disabled}
           className="pr-8"
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2">

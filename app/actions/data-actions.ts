@@ -475,6 +475,7 @@ export async function getRouteById(routeId: number) {
       pickup_address: stop.pickup_address,
       dropoff_address: stop.dropoff_address,
       stop_order: stop.stop_order,
+      status: stop.status,
     })) || []
   }
 }
@@ -574,29 +575,67 @@ export async function updateRoute(routeId: number, routeData: {
 
   if (routeError) throw routeError
 
-  // Delete existing stops
-  const { error: deleteError } = await supabase
+  // Fetch existing stops so we know which are safe to change. A stop that's
+  // already delivered or failed carries real captured data (signature,
+  // recipient name, actual_delivery_time, photos) - that must never be
+  // deleted or overwritten just because the route got edited. Only stops
+  // still pending are actually added, updated, or removed here.
+  const { data: existingStops, error: existingStopsError } = await supabase
     .from('route_stops')
-    .delete()
+    .select('id, status')
     .eq('route_id', routeId)
 
-  if (deleteError) throw deleteError
+  if (existingStopsError) throw existingStopsError
 
-  // Insert updated stops
-  const stopsToInsert = routeData.stops.map(stop => ({
-    route_id: routeId,
-    pharmacy_id: stop.pharmacyId,
-    pickup_address: stop.pickupAddress,
-    dropoff_address: stop.dropoffAddress,
-    stop_order: stop.stopOrder,
-    status: 'pending',
-  }))
+  const resolvedStopIds = new Set((existingStops || []).filter(s => s.status !== 'pending').map(s => s.id))
+  const pendingStopsById = new Map((existingStops || []).filter(s => s.status === 'pending').map(s => [s.id, s]))
+  const incomingIds = new Set(routeData.stops.filter(s => s.id).map(s => s.id))
 
-  const { error: stopsError } = await supabase
-    .from('route_stops')
-    .insert(stopsToInsert)
+  // Remove pending stops the admin took out of the form. Resolved stops are
+  // never touched here even if they're missing from the incoming list.
+  const idsToDelete = Array.from(pendingStopsById.keys()).filter(id => !incomingIds.has(id))
+  if (idsToDelete.length > 0) {
+    const { error: deleteError } = await supabase.from('route_stops').delete().in('id', idsToDelete)
+    if (deleteError) throw deleteError
+  }
 
-  if (stopsError) throw stopsError
+  // Update pending stops that still exist. A stop the admin submitted whose
+  // id belongs to an already-resolved stop is intentionally skipped - its
+  // real delivery data stays exactly as captured.
+  for (const stop of routeData.stops) {
+    if (stop.id && pendingStopsById.has(stop.id) && !resolvedStopIds.has(stop.id)) {
+      const { error: updateStopError } = await supabase
+        .from('route_stops')
+        .update({
+          pharmacy_id: stop.pharmacyId,
+          pickup_address: stop.pickupAddress,
+          dropoff_address: stop.dropoffAddress,
+          stop_order: stop.stopOrder,
+        })
+        .eq('id', stop.id)
+      if (updateStopError) throw updateStopError
+    }
+  }
+
+  // Insert genuinely new stops - no id, or an id that doesn't match any
+  // existing pending stop.
+  const newStops = routeData.stops.filter(s => !s.id || (!pendingStopsById.has(s.id) && !resolvedStopIds.has(s.id)))
+  if (newStops.length > 0) {
+    const stopsToInsert = newStops.map(stop => ({
+      route_id: routeId,
+      pharmacy_id: stop.pharmacyId,
+      pickup_address: stop.pickupAddress,
+      dropoff_address: stop.dropoffAddress,
+      stop_order: stop.stopOrder,
+      status: 'pending',
+    }))
+
+    const { error: stopsError } = await supabase
+      .from('route_stops')
+      .insert(stopsToInsert)
+
+    if (stopsError) throw stopsError
+  }
 
   return { success: true }
 }

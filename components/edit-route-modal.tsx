@@ -28,6 +28,7 @@ interface RouteStopForm {
   pickupAddress: string
   dropoffAddress: string
   stopOrder: number
+  status?: string
 }
 
 export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditRouteModalProps) {
@@ -88,6 +89,7 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
             pickupAddress: stop.pickup_address || "",
             dropoffAddress: stop.dropoff_address || "",
             stopOrder: stop.stop_order || 0,
+            status: stop.status || "pending",
           })))
         }
       }
@@ -337,11 +339,20 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                 </Button>
               </div>
 
-              {stops.map((stop, index) => (
-                <div key={index} className="border rounded-lg p-4 space-y-3 relative">
+              {stops.map((stop, index) => {
+                const isResolved = stop.status === "delivered" || stop.status === "failed"
+                return (
+                <div key={index} className={`border rounded-lg p-4 space-y-3 relative ${isResolved ? "bg-muted/50" : ""}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <Badge variant="outline">Stop {index + 1}</Badge>
-                    {stops.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">Stop {index + 1}</Badge>
+                      {isResolved && (
+                        <Badge className={stop.status === "delivered" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                          {stop.status === "delivered" ? "Delivered" : "Failed"} - locked
+                        </Badge>
+                      )}
+                    </div>
+                    {stops.length > 1 && !isResolved && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -353,6 +364,11 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                       </Button>
                     )}
                   </div>
+                  {isResolved && (
+                    <p className="text-xs text-muted-foreground -mt-2">
+                      This stop already has a real delivery outcome recorded and can't be changed here.
+                    </p>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -367,6 +383,7 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                             updateStop(index, "pickupAddress", pharmacy.address)
                           }
                         }}
+                        disabled={isResolved}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select pharmacy" />
@@ -401,10 +418,12 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                       value={stop.dropoffAddress}
                       onChange={(value) => updateStop(index, "dropoffAddress", value)}
                       required
+                      disabled={isResolved}
                     />
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="flex gap-3 pt-4">
