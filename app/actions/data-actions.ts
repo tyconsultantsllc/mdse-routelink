@@ -308,7 +308,10 @@ export async function getDashboardStats() {
 
 export async function createRoute(routeData: {
   name: string
+  startDate?: string
   startTime?: string
+  endTime?: string
+  estimatedDuration?: number
   priority: string
   stops: Array<{
     pharmacyId: string
@@ -324,14 +327,21 @@ export async function createRoute(routeData: {
   }
 
   const supabase = createAdminClient()
-  
-  let startTimeTimestamp = null
-  if (routeData.startTime) {
-    const today = new Date()
-    const [hours, minutes] = routeData.startTime.split(':')
-    today.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    startTimeTimestamp = today.toISOString()
+
+  // startDate defaults to today only for backward compatibility with
+  // callers that don't pass one - previously this ALWAYS used today
+  // regardless of what date was intended, which silently broke scheduling
+  // a route for any date other than today (the whole point of the calendar).
+  const buildTimestamp = (timeStr?: string) => {
+    if (!timeStr) return null
+    const baseDate = routeData.startDate ? new Date(`${routeData.startDate}T00:00:00`) : new Date()
+    const [hours, minutes] = timeStr.split(':')
+    baseDate.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    return baseDate.toISOString()
   }
+
+  const startTimeTimestamp = buildTimestamp(routeData.startTime)
+  const endTimeTimestamp = buildTimestamp(routeData.endTime)
   
   // Insert the route
   const { data: route, error: routeError } = await supabase
@@ -339,6 +349,8 @@ export async function createRoute(routeData: {
     .insert({
       name: routeData.name,
       start_time: startTimeTimestamp,
+      end_time: endTimeTimestamp,
+      estimated_duration: routeData.estimatedDuration || null,
       priority: routeData.priority,
       status: 'pending',
       created_at: new Date().toISOString(),

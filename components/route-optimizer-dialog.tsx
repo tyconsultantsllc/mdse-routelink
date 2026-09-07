@@ -12,7 +12,7 @@ interface RouteOptimizerDialogProps {
   isOpen: boolean
   onClose: () => void
   stops: any[]
-  onOptimize: (optimizedStops: any[]) => void
+  onOptimize: (optimizedStops: any[], estimatedDuration?: number) => void
 }
 
 export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: RouteOptimizerDialogProps) {
@@ -44,7 +44,7 @@ export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: Rou
 
       setProgressText("Calculating best order...")
       const optimized = optimizeStopsWithOrder(stopsWithDropoffCoords)
-      onOptimize(optimized.stops)
+      onOptimize(optimized.stops, optimized.estimatedDuration)
     } finally {
       setIsOptimizing(false)
       setProgressText("")

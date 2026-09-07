@@ -19,6 +19,12 @@ interface AddRouteModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
+  initialDate?: Date | null
+  copyFrom?: {
+    name: string
+    priority: string
+    stops: RouteStopForm[]
+  } | null
 }
 
 interface RouteStopForm {
@@ -28,10 +34,11 @@ interface RouteStopForm {
   dropoffAddress: string
 }
 
-export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalProps) {
+export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copyFrom }: AddRouteModalProps) {
   const { toast } = useToast()
   const [routeName, setRouteName] = useState("")
   const [startTime, setStartTime] = useState("")
+  const [endTime, setEndTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false)
   const [preparedStops, setPreparedStops] = useState<any[]>([])
@@ -47,12 +54,18 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
   const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string; latitude?: number; longitude?: number }>>([])
   const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [optimizedDurationMinutes, setOptimizedDurationMinutes] = useState<number | null>(null)
 
   useEffect(() => {
     if (open) {
       loadPharmacies()
+      if (copyFrom) {
+        setRouteName(`${copyFrom.name} (Copy)`)
+        setPriority(copyFrom.priority)
+        setStops(copyFrom.stops.length > 0 ? copyFrom.stops : [{ pharmacyId: "", pharmacyName: "", pickupAddress: "", dropoffAddress: "" }])
+      }
     }
-  }, [open])
+  }, [open, copyFrom])
 
   const loadPharmacies = async () => {
     setIsLoadingPharmacies(true)
@@ -113,9 +126,17 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
     setIsSubmitting(true)
     try {
       const { createRoute } = await import('@/app/actions/data-actions')
+
+      const startDate = initialDate
+        ? `${initialDate.getFullYear()}-${String(initialDate.getMonth() + 1).padStart(2, '0')}-${String(initialDate.getDate()).padStart(2, '0')}`
+        : undefined
+
       await createRoute({
         name: routeName,
+        startDate,
         startTime: startTime || undefined,
+        endTime: endTime || undefined,
+        estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
         priority,
         stops: stops.map((stop, index) => ({
           pharmacyId: stop.pharmacyId,
@@ -133,6 +154,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
       // Reset form
       setRouteName("")
       setStartTime("")
+      setEndTime("")
+      setOptimizedDurationMinutes(null)
       setPriority("medium")
       setStops([{
         pharmacyId: "",
@@ -210,10 +233,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
     return { lat: 33.7175, lng: -117.8311 }
   }
 
-  const handleOptimizedStops = (optimizedStops: any[]) => {
-    console.log('[v0] Original stops:', stops)
-    console.log('[v0] Optimized stops:', optimizedStops)
-    
+  const handleOptimizedStops = (optimizedStops: any[], estimatedDuration?: number) => {
     const reorderedStops = optimizedStops.map((opt) => {
       // Find the original stop by pharmacy ID
       const originalStop = stops.find((s) => s.pharmacyId === opt.pharmacy_id)
@@ -236,9 +256,11 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
         dropoffAddress: "",
       }
     })
-    
-    console.log('[v0] Reordered stops:', reorderedStops)
+
     setStops(reorderedStops)
+    if (estimatedDuration != null) {
+      setOptimizedDurationMinutes(Math.round(estimatedDuration))
+    }
     
     toast({
       title: "Route Optimized",
@@ -272,6 +294,27 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
     }
   }
 
+  // Falls back to a simple 30-min-per-stop heuristic (matching the default
+  // used everywhere else in the app) until the admin runs Optimize, which
+  // gives a real distance-based estimate instead.
+  const validStopCount = stops.filter((s) => s.pharmacyId && s.dropoffAddress).length
+  const recommendedDurationMinutes = optimizedDurationMinutes ?? validStopCount * 30
+  const recommendedDurationLabel =
+    recommendedDurationMinutes >= 60
+      ? `${Math.floor(recommendedDurationMinutes / 60)}h ${recommendedDurationMinutes % 60}m`
+      : `${recommendedDurationMinutes} min`
+
+  const handleApplyRecommendedDuration = () => {
+    if (!startTime) return
+    const [hours, minutes] = startTime.split(':').map(Number)
+    const totalMinutes = hours * 60 + minutes + recommendedDurationMinutes
+    // Round to the nearest 15-minute increment, matching the time inputs
+    const roundedMinutes = Math.round(totalMinutes / 15) * 15
+    const endHours = Math.floor(roundedMinutes / 60) % 24
+    const endMins = roundedMinutes % 60
+    setEndTime(`${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -279,7 +322,13 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
           <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary/10 mb-4">
             <MapIcon className="h-6 w-6 text-primary" />
           </div>
-          <DialogTitle className="text-center">Create New Route</DialogTitle>
+          <DialogTitle className="text-center">{copyFrom ? "Copy Route" : "Create New Route"}</DialogTitle>
+          {initialDate && (
+            <p className="text-center text-sm text-muted-foreground">
+              Scheduling for{" "}
+              {initialDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </p>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
@@ -323,11 +372,34 @@ export function AddRouteModal({ open, onOpenChange, onSuccess }: AddRouteModalPr
               <Input
                 id="startTime"
                 type="time"
+                step={900}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
               />
             </div>
+            <div>
+              <Label htmlFor="endTime">End Time</Label>
+              <Input
+                id="endTime"
+                type="time"
+                step={900}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
           </div>
+
+          {recommendedDurationMinutes > 0 && (
+            <div className="flex items-center justify-between rounded-md border bg-muted/50 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">
+                Recommended duration: <span className="font-medium text-foreground">{recommendedDurationLabel}</span>
+                {optimizedDurationMinutes == null && " (est. 30 min/stop - run Optimize for a distance-based estimate)"}
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={handleApplyRecommendedDuration} disabled={!startTime}>
+                Apply to End Time
+              </Button>
+            </div>
+          )}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">

@@ -21,6 +21,7 @@ interface ScheduledRoute {
   endTime: string
   priority: "low" | "medium" | "high" | "urgent"
   stops: number
+  stopDetails: { pharmacyId: string; pharmacyName: string; pickupAddress: string; dropoffAddress: string }[]
   status: "scheduled" | "in-progress" | "completed"
 }
 
@@ -44,6 +45,7 @@ export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [addRouteModalOpen, setAddRouteModalOpen] = useState(false)
+  const [copyFromRoute, setCopyFromRoute] = useState<ScheduledRoute | null>(null)
   const [scheduledRoutes, setScheduledRoutes] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
@@ -74,6 +76,14 @@ export default function CalendarView() {
             endTime: route.end_time ? new Date(route.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
             priority: route.priority || 'medium',
             stops: route.route_stops?.length || 0,
+            stopDetails: (route.route_stops || [])
+              .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
+              .map((stop: any) => ({
+                pharmacyId: stop.pharmacy_id,
+                pharmacyName: stop.pharmacies?.name || "",
+                pickupAddress: stop.pharmacies?.address || "",
+                dropoffAddress: stop.dropoff_address || "",
+              })),
             status: route.status || 'scheduled'
           })
         }
@@ -322,6 +332,16 @@ export default function CalendarView() {
                             ? "In Progress"
                             : route.status.charAt(0).toUpperCase() + route.status.slice(1)}
                         </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setCopyFromRoute(route)
+                            setAddRouteModalOpen(true)
+                          }}
+                        >
+                          Copy
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -341,7 +361,20 @@ export default function CalendarView() {
         </div>
       </div>
 
-      <AddRouteModal open={addRouteModalOpen} onOpenChange={setAddRouteModalOpen} />
+      <AddRouteModal
+        open={addRouteModalOpen}
+        onOpenChange={(open) => {
+          setAddRouteModalOpen(open)
+          if (!open) setCopyFromRoute(null)
+        }}
+        onSuccess={fetchRoutes}
+        initialDate={selectedDate}
+        copyFrom={
+          copyFromRoute
+            ? { name: copyFromRoute.name, priority: copyFromRoute.priority, stops: copyFromRoute.stopDetails }
+            : null
+        }
+      />
     </div>
   )
 }
