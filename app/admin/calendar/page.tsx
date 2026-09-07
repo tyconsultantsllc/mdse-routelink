@@ -168,7 +168,7 @@ export default function CalendarView() {
       <AdminSidebar />
 
       <div className="flex flex-col flex-1 overflow-hidden pt-16 md:pt-0">
-        <AdminHeader title="Route Calendar" notifications={[]} />
+        <AdminHeader title="Route Calendar" />
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Calendar Header */}

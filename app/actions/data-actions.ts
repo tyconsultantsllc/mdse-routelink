@@ -479,6 +479,8 @@ export async function deleteRoute(routeId: number) {
 export async function updateRoute(routeId: number, routeData: {
   name: string
   startTime?: string
+  endTime?: string
+  estimatedDuration?: number
   priority: string
   status: string
   stops: Array<{
@@ -496,14 +498,24 @@ export async function updateRoute(routeId: number, routeData: {
   }
 
   const supabase = createAdminClient()
-  
-  let startTimeTimestamp = null
-  if (routeData.startTime) {
-    const today = new Date()
-    const [hours, minutes] = routeData.startTime.split(':')
-    today.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    startTimeTimestamp = today.toISOString()
+
+  // Preserve the route's existing scheduled date - only the time-of-day is
+  // being edited here. This previously always substituted today's date,
+  // meaning editing a route's time silently moved its whole schedule to
+  // today regardless of what date it was actually set for.
+  const { data: existingRoute } = await supabase.from('routes').select('start_time').eq('id', routeId).single()
+  const baseDate = existingRoute?.start_time ? new Date(existingRoute.start_time) : new Date()
+
+  const buildTimestamp = (timeStr?: string) => {
+    if (!timeStr) return null
+    const d = new Date(baseDate)
+    const [hours, minutes] = timeStr.split(':')
+    d.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    return d.toISOString()
   }
+
+  const startTimeTimestamp = buildTimestamp(routeData.startTime)
+  const endTimeTimestamp = buildTimestamp(routeData.endTime)
   
   // Update the route
   const { error: routeError } = await supabase
@@ -511,6 +523,8 @@ export async function updateRoute(routeId: number, routeData: {
     .update({
       name: routeData.name,
       start_time: startTimeTimestamp,
+      end_time: endTimeTimestamp,
+      estimated_duration: routeData.estimatedDuration,
       priority: routeData.priority,
       status: routeData.status,
       updated_at: new Date().toISOString(),

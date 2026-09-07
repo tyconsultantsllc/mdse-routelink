@@ -16,7 +16,6 @@ import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload } from "lucide
 
 export default function SettingsPage() {
   const { toast } = useToast()
-  const [notifications] = useState([])
   const [adminUserId, setAdminUserId] = useState("")
 
   // Profile settings
@@ -172,7 +171,7 @@ export default function SettingsPage() {
       <AdminSidebar />
 
       <div className="flex flex-col flex-1 overflow-hidden pt-16 md:pt-0">
-        <AdminHeader title="Settings" notifications={notifications} />
+        <AdminHeader title="Settings" />
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <Tabs defaultValue="profile" className="space-y-6">

@@ -8,7 +8,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
-import type { Notification } from "@/components/notification-center"
 import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button" // Fixed import to use named export instead of default
@@ -46,7 +45,6 @@ interface Route {
 
 export default function AdminDashboard() {
   const { toast } = useToast()
-  const [notifications, setNotifications] = useState<Notification[]>([])
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [routes, setRoutes] = useState<any[]>([])
   const [recentDeliveries, setRecentDeliveries] = useState<any[]>([])
@@ -209,23 +207,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // Notification handlers
-  const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
-  }
-
-  const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-    toast({
-      title: "All notifications marked as read",
-      variant: "default",
-    })
-  }
-
-  const handleDismiss = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }
-
   useEffect(() => {
     if (unassignedRoutes.length > 0) {
       const urgentRoutes = unassignedRoutes.filter((r) => r.priority === "urgent")
@@ -262,13 +243,7 @@ export default function AdminDashboard() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 overflow-hidden pt-16 md:pt-0">
-          <AdminHeader
-            title="Admin Dashboard"
-            notifications={notifications}
-            onMarkAsRead={handleMarkAsRead}
-            onMarkAllAsRead={handleMarkAllAsRead}
-            onDismiss={handleDismiss}
-          />
+          <AdminHeader title="Admin Dashboard" />
 
           <div className="flex-1 overflow-y-auto p-3 md:p-6">
             {/* Unassigned Routes Alert Banner */}

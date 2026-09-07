@@ -104,7 +104,7 @@ export default function UsersPage() {
     <div className="flex h-screen bg-background">
       <AdminSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AdminHeader />
+        <AdminHeader title="Users" />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Header */}
