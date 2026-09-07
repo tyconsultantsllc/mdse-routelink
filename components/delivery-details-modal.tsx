@@ -5,6 +5,7 @@ import { FileSignature } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface DeliveryDetailsModalProps {
   open: boolean
@@ -15,6 +16,7 @@ interface DeliveryDetailsModalProps {
 export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryDetailsModalProps) {
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [loadingSignature, setLoadingSignature] = useState(false)
+  const { toast } = useToast()
 
   if (!delivery) return null
 
@@ -24,8 +26,12 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
       const { getDeliverySignatureUrl } = await import("@/app/actions/data-actions")
       const url = await getDeliverySignatureUrl(delivery.routeStopId)
       setSignatureUrl(url)
-    } catch (error) {
-      console.error("Error loading signature:", error)
+    } catch (error: any) {
+      toast({
+        title: "Couldn't load signature",
+        description: error?.message || "Unknown error",
+        variant: "destructive",
+      })
     } finally {
       setLoadingSignature(false)
     }
@@ -91,11 +97,15 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
             </div>
           )}
 
-          {delivery.hasSignature && !signatureUrl && (
+          {delivery.status === "completed" && delivery.hasSignature && !signatureUrl && (
             <Button variant="outline" size="sm" onClick={handleViewSignature} disabled={loadingSignature}>
               <FileSignature className="h-4 w-4 mr-2" />
               {loadingSignature ? "Loading..." : "View Signature"}
             </Button>
+          )}
+
+          {delivery.status === "completed" && !delivery.hasSignature && (
+            <p className="text-xs text-muted-foreground italic">No signature on file for this delivery.</p>
           )}
 
           {signatureUrl && (
