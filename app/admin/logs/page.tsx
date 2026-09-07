@@ -44,11 +44,18 @@ export default function DeliveryLogs() {
         getPharmacies()
       ])
 
+      if (logsData && logsData.length > 0) {
+        console.log("[diagnostic] Raw delivery log shape:", JSON.stringify(logsData[0], null, 2))
+      }
+
       setDeliveries(
         logsData?.map((d: any) => {
           const driver = usersData.find((u: any) => u.id === d.driver_id && u.role === "driver")
           const pharmacy = pharmaciesData.find((p: any) => p.id === d.pharmacy_id)
           
+          const routeInfo = Array.isArray(d.routes) ? d.routes[0] : d.routes
+          const stopInfo = Array.isArray(d.route_stops) ? d.route_stops[0] : d.route_stops
+
           return {
             id: d.id,
             driver: driver ? `${driver.first_name} ${driver.last_name}` : "Unknown",
@@ -58,12 +65,12 @@ export default function DeliveryLogs() {
             date: new Date(d.timestamp || d.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
             time: new Date(d.timestamp || d.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
             status: d.action === 'delivered' ? 'completed' : d.action === 'failed' ? 'failed' : (d.action || 'pending'),
-            priority: d.routes?.priority || "medium",
-            routeName: d.routes?.name || "Unknown Route",
+            priority: routeInfo?.priority || "medium",
+            routeName: routeInfo?.name || "Unknown Route",
             routeStopId: d.route_stop_id,
-            dropoffAddress: d.route_stops?.dropoff_address || "N/A",
-            recipientName: d.route_stops?.recipient_name || null,
-            hasSignature: !!d.route_stops?.signature_path,
+            dropoffAddress: stopInfo?.dropoff_address || "N/A",
+            recipientName: stopInfo?.recipient_name || null,
+            hasSignature: !!stopInfo?.signature_path,
             failureReason: d.action === 'failed' ? (d.notes || "No reason provided") : null,
           }
         }) || []
