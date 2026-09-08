@@ -13,12 +13,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useToast } from "@/hooks/use-toast"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
-import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin } from "lucide-react"
 
 export default function SettingsPage() {
   const { toast } = useToast()
   const [adminUserId, setAdminUserId] = useState("")
   const [changeEmailOpen, setChangeEmailOpen] = useState(false)
+  const [bulkPharmacies, setBulkPharmacies] = useState<any[]>([])
+  const [bulkDrivers, setBulkDrivers] = useState<any[]>([])
+  const [regionsLoading, setRegionsLoading] = useState(true)
+  const [isSavingRegions, setIsSavingRegions] = useState(false)
 
   // Profile settings
   const [profileData, setProfileData] = useState({
@@ -100,6 +105,52 @@ export default function SettingsPage() {
     loadSettings()
   }, [])
 
+  useEffect(() => {
+    const loadRegionData = async () => {
+      setRegionsLoading(true)
+      try {
+        const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
+        const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
+        setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
+        setBulkDrivers(
+          users
+            .filter((u: any) => u.role === "driver")
+            .map((u: any) => ({
+              id: u.id,
+              name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+              region: u.drivers?.[0]?.region || "",
+            })),
+        )
+      } catch (error) {
+        console.error("Error loading region data:", error)
+      } finally {
+        setRegionsLoading(false)
+      }
+    }
+    loadRegionData()
+  }, [])
+
+  const handleSaveAllRegions = async () => {
+    setIsSavingRegions(true)
+    try {
+      const supabase = createClient()
+      const { updateUser } = await import("@/app/actions/data-actions")
+
+      await Promise.all([
+        ...bulkPharmacies.map((p) =>
+          supabase.from("pharmacies").update({ region: p.region || null }).eq("id", p.id),
+        ),
+        ...bulkDrivers.map((d) => updateUser(d.id, { region: d.region || undefined })),
+      ])
+
+      toast({ title: "Regions saved", description: "All region assignments have been updated." })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to save regions", variant: "destructive" })
+    } finally {
+      setIsSavingRegions(false)
+    }
+  }
+
   const handleSaveProfile = async () => {
     try {
       const { updateUser } = await import("@/app/actions/data-actions")
@@ -177,7 +228,7 @@ export default function SettingsPage() {
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:w-[600px]">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 lg:w-[720px]">
               <TabsTrigger value="profile">
                 <User className="h-4 w-4 mr-2" />
                 Profile
@@ -193,6 +244,10 @@ export default function SettingsPage() {
               <TabsTrigger value="system">
                 <Globe className="h-4 w-4 mr-2" />
                 System
+              </TabsTrigger>
+              <TabsTrigger value="regions">
+                <MapPin className="h-4 w-4 mr-2" />
+                Regions
               </TabsTrigger>
             </TabsList>
 
@@ -611,6 +666,88 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                 </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="regions" className="space-y-6">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Region Assignment</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Assign a region to every pharmacy and driver at once, instead of editing them one at a time.
+                    </p>
+                  </div>
+                  <Button onClick={handleSaveAllRegions} disabled={isSavingRegions || regionsLoading}>
+                    {isSavingRegions ? "Saving..." : "Save All Regions"}
+                  </Button>
+                </div>
+
+                {regionsLoading ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Loading...</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <h4 className="font-medium mb-3">Pharmacies</h4>
+                      <div className="space-y-2">
+                        {bulkPharmacies.map((pharmacy, index) => (
+                          <div key={pharmacy.id} className="flex items-center justify-between gap-3 p-2 border rounded-md">
+                            <span className="text-sm truncate">{pharmacy.name}</span>
+                            <Select
+                              value={pharmacy.region}
+                              onValueChange={(value) => {
+                                const updated = [...bulkPharmacies]
+                                updated[index] = { ...pharmacy, region: value }
+                                setBulkPharmacies(updated)
+                              }}
+                            >
+                              <SelectTrigger className="w-[180px] shrink-0">
+                                <SelectValue placeholder="No region" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="socal">Southern California</SelectItem>
+                                <SelectItem value="minnesota">Minnesota</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                        {bulkPharmacies.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No pharmacies found.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-medium mb-3">Drivers</h4>
+                      <div className="space-y-2">
+                        {bulkDrivers.map((driver, index) => (
+                          <div key={driver.id} className="flex items-center justify-between gap-3 p-2 border rounded-md">
+                            <span className="text-sm truncate">{driver.name}</span>
+                            <Select
+                              value={driver.region}
+                              onValueChange={(value) => {
+                                const updated = [...bulkDrivers]
+                                updated[index] = { ...driver, region: value }
+                                setBulkDrivers(updated)
+                              }}
+                            >
+                              <SelectTrigger className="w-[180px] shrink-0">
+                                <SelectValue placeholder="No region" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="socal">Southern California</SelectItem>
+                                <SelectItem value="minnesota">Minnesota</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                        {bulkDrivers.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No drivers found.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Card>
             </TabsContent>
           </Tabs>

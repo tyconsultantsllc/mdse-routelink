@@ -11,6 +11,7 @@ import { AdminHeader } from "@/components/admin-header"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AddUserModal } from "@/components/add-user-modal"
 import { EditUserModal } from "@/components/edit-user-modal"
+import { RegionBadge } from "@/components/region-badge"
 import { useToast } from "@/hooks/use-toast"
 
 export default function UsersPage() {
@@ -180,9 +181,14 @@ export default function UsersPage() {
                         <TableCell>{getRoleBadge(user.role)}</TableCell>
                         <TableCell>{user.phone || "—"}</TableCell>
                         <TableCell>
-                          {user.role === "driver" && "Driver"}
-                          {user.role === "pharmacy" && "Pharmacy User"}
-                          {user.role === "admin" && "Administrator"}
+                          <div className="flex items-center gap-2">
+                            <span>
+                              {user.role === "driver" && "Driver"}
+                              {user.role === "pharmacy" && "Pharmacy User"}
+                              {user.role === "admin" && "Administrator"}
+                            </span>
+                            {user.role === "driver" && <RegionBadge region={user.drivers?.[0]?.region} />}
+                          </div>
                         </TableCell>
                         <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
