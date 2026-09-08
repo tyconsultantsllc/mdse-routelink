@@ -136,14 +136,51 @@ export default function SettingsPage() {
       const supabase = createClient()
       const { updateUser } = await import("@/app/actions/data-actions")
 
-      await Promise.all([
-        ...bulkPharmacies.map((p) =>
-          supabase.from("pharmacies").update({ region: p.region || null }).eq("id", p.id),
-        ),
-        ...bulkDrivers.map((d) => updateUser(d.id, { region: d.region || undefined })),
-      ])
+      const pharmacyResults = await Promise.all(
+        bulkPharmacies.map(async (p) => {
+          const { error } = await supabase.from("pharmacies").update({ region: p.region || null }).eq("id", p.id)
+          return { name: p.name, error }
+        }),
+      )
 
-      toast({ title: "Regions saved", description: "All region assignments have been updated." })
+      const driverResults = await Promise.all(
+        bulkDrivers.map(async (d) => {
+          try {
+            await updateUser(d.id, { region: d.region || undefined })
+            return { name: d.name, error: null }
+          } catch (err: any) {
+            return { name: d.name, error: err }
+          }
+        }),
+      )
+
+      const failures = [...pharmacyResults, ...driverResults].filter((r) => r.error)
+
+      if (failures.length > 0) {
+        console.error("Region save failures:", failures)
+        toast({
+          title: `${failures.length} region${failures.length > 1 ? "s" : ""} failed to save`,
+          description: failures.map((f) => f.name).join(", "),
+          variant: "destructive",
+        })
+      } else {
+        toast({ title: "Regions saved", description: "All region assignments have been updated." })
+      }
+
+      // Reload from the database rather than trusting local state, so the
+      // screen reflects what's actually saved - not just what was clicked.
+      const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
+      const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
+      setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
+      setBulkDrivers(
+        users
+          .filter((u: any) => u.role === "driver")
+          .map((u: any) => ({
+            id: u.id,
+            name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+            region: u.drivers?.[0]?.region || "",
+          })),
+      )
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save regions", variant: "destructive" })
     } finally {
