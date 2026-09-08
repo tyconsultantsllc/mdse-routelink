@@ -267,8 +267,11 @@ export async function updateOwnProfile(updates: {
     if (updates.licenseNumber !== undefined) driverUpdates.license_number = updates.licenseNumber
 
     if (Object.keys(driverUpdates).length > 0) {
-      const { error } = await supabase.from('drivers').update(driverUpdates).eq('id', userId)
+      const { data, error } = await supabase.from('drivers').update(driverUpdates).eq('id', userId).select()
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('No driver record found for your account - the update matched zero rows.')
+      }
     }
   }
 
@@ -308,7 +311,7 @@ export async function updateUser(userId: string, updates: {
 
   // Update drivers table if driver-specific fields are provided
   if (updates.vehicleType || updates.vehiclePlate || updates.licenseNumber || updates.region) {
-    const { error: driverError } = await supabase
+    const { data: driverData, error: driverError } = await supabase
       .from('drivers')
       .update({
         vehicle_type: updates.vehicleType,
@@ -317,8 +320,17 @@ export async function updateUser(userId: string, updates: {
         region: updates.region,
       })
       .eq('id', userId)
+      .select()
 
     if (driverError) throw driverError
+
+    // Supabase reports success even when zero rows matched the filter -
+    // that's not an error, just nothing to update, which silently produces
+    // "it said it worked but nothing changed" if this driver has no row in
+    // the drivers table at all.
+    if (!driverData || driverData.length === 0) {
+      throw new Error(`No driver record found for this user (id: ${userId}) - the update matched zero rows.`)
+    }
   }
 
   return { success: true }
