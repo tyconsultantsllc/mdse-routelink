@@ -17,6 +17,9 @@ import { useToast } from "@/components/ui/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { getRoutes, getUsers } from "@/app/actions/data-actions"
+import { RegionBadge } from "@/components/region-badge"
+import { RegionFilter } from "@/components/region-filter"
+import { getRouteRegion } from "@/lib/region-utils"
 
 const RouteMap = dynamic(() => import("@/components/route-map"), {
   ssr: false,
@@ -40,6 +43,7 @@ export default function RouteManagement() {
   const { toast } = useToast()
 
   const [routes, setRoutes] = useState<any[]>([])
+  const [selectedRegion, setSelectedRegion] = useState("all")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -85,6 +89,7 @@ export default function RouteManagement() {
             distance: "N/A",
             priority: r.priority || "medium",
             status: r.status || "pending",
+            region: getRouteRegion(stops),
           }
         }) || []
       )
@@ -185,6 +190,8 @@ export default function RouteManagement() {
     setTimeout(() => setHighlightedRouteId(null), 3000)
   }
 
+  const filteredRoutes = selectedRegion === "all" ? routes : routes.filter((r) => r.region === selectedRegion)
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -204,10 +211,13 @@ export default function RouteManagement() {
                   </div>
                 )}
               </div>
-              <Button onClick={() => setIsModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Route
-              </Button>
+              <div className="flex items-center gap-3">
+                <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+                <Button onClick={() => setIsModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Route
+                </Button>
+              </div>
             </div>
 
             <Card className="p-6 mb-6" ref={mapRef}>
@@ -219,7 +229,7 @@ export default function RouteManagement() {
                 <Card className="p-8 text-center">
                   <p className="text-muted-foreground">Loading routes...</p>
                 </Card>
-              ) : routes.length === 0 ? (
+              ) : filteredRoutes.length === 0 ? (
                 <Card className="p-8 text-center">
                   <p className="text-muted-foreground">No routes found. Add your first route to get started.</p>
                 </Card>
@@ -229,6 +239,9 @@ export default function RouteManagement() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Route Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Region
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Assigned Driver
@@ -251,13 +264,16 @@ export default function RouteManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
-                    {routes.map((route) => (
+                    {filteredRoutes.map((route) => (
                       <tr key={route.id} className={!route.assignedDriver ? "bg-orange-50/50" : ""}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-foreground">{route.name}</div>
                           <div className="text-sm text-muted-foreground">
                             {route.distance} • {route.estimatedDuration}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <RegionBadge region={route.region} />
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {route.assignedDriver ? (

@@ -14,6 +14,7 @@ import { AdvancedFilterPanel } from "@/components/advanced-filter-panel"
 import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { createClient } from "@/lib/supabase/client"
 import { getDeliveryLogs, getUsers, getPharmacies } from "@/app/actions/data-actions"
+import { RegionBadge } from "@/components/region-badge"
 
 export default function DeliveryLogs() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -44,10 +45,6 @@ export default function DeliveryLogs() {
         getPharmacies()
       ])
 
-      if (logsData && logsData.length > 0) {
-        console.log("[diagnostic] Raw delivery log shape:", JSON.stringify(logsData[0], null, 2))
-      }
-
       setDeliveries(
         logsData?.map((d: any) => {
           const driver = usersData.find((u: any) => u.id === d.driver_id && u.role === "driver")
@@ -61,6 +58,7 @@ export default function DeliveryLogs() {
             driver: driver ? `${driver.first_name} ${driver.last_name}` : "Unknown",
             avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.driver_id}`,
             pharmacy: pharmacy?.name || "Unknown Pharmacy",
+            region: pharmacy?.region || null,
             address: pharmacy?.address || "N/A",
             date: new Date(d.timestamp || d.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
             time: new Date(d.timestamp || d.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
@@ -293,7 +291,10 @@ export default function DeliveryLogs() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-foreground">{delivery.pharmacy}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-foreground">{delivery.pharmacy}</div>
+                              <RegionBadge region={delivery.region} />
+                            </div>
                             <div className="text-sm text-muted-foreground">{delivery.address}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { geocodeAddress } from "@/lib/geocode"
@@ -24,6 +25,7 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
     contactPhone: "",
     latitude: "",
     longitude: "",
+    region: "",
   })
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
@@ -59,6 +61,7 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
           email: formData.contactEmail,
           latitude,
           longitude,
+          region: formData.region || null,
         },
       ])
 
@@ -93,6 +96,7 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
       contactPhone: "",
       latitude: "",
       longitude: "",
+      region: "",
     })
   }
 
@@ -125,6 +129,18 @@ export function AddPharmacyModal({ open, onOpenChange, onSuccess }: AddPharmacyM
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               required
             />
+          </div>
+          <div>
+            <Label htmlFor="region">Region *</Label>
+            <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
+              <SelectTrigger id="region">
+                <SelectValue placeholder="Select a region" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="socal">Southern California</SelectItem>
+                <SelectItem value="minnesota">Minnesota</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

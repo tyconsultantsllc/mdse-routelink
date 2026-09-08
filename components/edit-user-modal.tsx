@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
@@ -26,6 +27,7 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
     vehicleType: "",
     vehiclePlate: "",
     licenseNumber: "",
+    region: "",
   })
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
@@ -40,6 +42,7 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
         vehicleType: user.drivers?.[0]?.vehicle_type || "",
         vehiclePlate: user.drivers?.[0]?.vehicle_plate || "",
         licenseNumber: user.drivers?.[0]?.license_number || "",
+        region: user.drivers?.[0]?.region || "",
       })
     }
   }, [user])
@@ -62,6 +65,7 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
         vehicleType: formData.vehicleType,
         vehiclePlate: formData.vehiclePlate,
         licenseNumber: formData.licenseNumber,
+        region: formData.region,
       })
 
       toast({
@@ -139,6 +143,18 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
 
           {user.role === "driver" && (
             <>
+              <div>
+                <Label htmlFor="editRegion">Region *</Label>
+                <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
+                  <SelectTrigger id="editRegion">
+                    <SelectValue placeholder="Select a region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="socal">Southern California</SelectItem>
+                    <SelectItem value="minnesota">Minnesota</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label htmlFor="vehicleType">Vehicle Type</Label>
                 <Input

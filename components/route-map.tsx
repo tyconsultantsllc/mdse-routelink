@@ -43,7 +43,7 @@ export default function RouteMap({ highlightedRouteId, routes = [] }: RouteMapPr
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
-    const map = L.map(containerRef.current).setView([33.7175, -117.8311], 11)
+    const map = L.map(containerRef.current).setView([39.8283, -98.5795], 4)
     mapRef.current = map
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

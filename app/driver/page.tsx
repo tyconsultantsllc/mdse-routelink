@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client"
 import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation, failDeliveryStop } from "@/lib/driver-actions"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { DriverSettingsDialog } from "@/components/driver-settings-dialog"
+import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 
@@ -54,7 +55,7 @@ interface Route {
 export default function DriverTrackingPage() {
   const { toast } = useToast()
   const router = useRouter()
-  const [currentLocation, setCurrentLocation] = useState({ lat: 33.7175, lng: -117.8311 })
+  const [currentLocation, setCurrentLocation] = useState({ lat: 39.8283, lng: -98.5795 })
   const [isTracking, setIsTracking] = useState(false)
   const [speed, setSpeed] = useState(0)
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
@@ -133,9 +134,12 @@ export default function DriverTrackingPage() {
       setDriverId(user.id)
       setDriverEmail(user.email || "")
 
-      const { data: driverRow } = await supabase.from("drivers").select("status").eq("id", user.id).single()
+      const { data: driverRow } = await supabase.from("drivers").select("status, region").eq("id", user.id).single()
       if (driverRow) {
         setIsTracking(driverRow.status !== "offline")
+        if (driverRow.region === "socal" || driverRow.region === "minnesota") {
+          setCurrentLocation(REGION_FALLBACK_COORDS[driverRow.region as "socal" | "minnesota"])
+        }
       }
 
       const { data, error } = await supabase

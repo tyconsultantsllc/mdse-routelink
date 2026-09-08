@@ -53,7 +53,7 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
         touchZoom: true,
         dragging: true,
         zoomControl: true,
-      }).setView([33.7175, -117.8311], 12)
+      }).setView([39.8283, -98.5795], 4)
 
       mapRef.current = map
 

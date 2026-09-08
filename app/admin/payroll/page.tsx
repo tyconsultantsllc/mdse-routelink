@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { getRoutes, getUsers } from "@/app/actions/data-actions"
+import { RegionFilter } from "@/components/region-filter"
 import { generatePaystubHTML, printReport, exportToCSV } from "@/lib/export-utils"
 import { getAppSetting, setAppSetting } from "@/lib/app-settings"
 
@@ -32,6 +33,7 @@ export default function PayrollSummaryPage() {
   const [routes, setRoutes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDriverId, setSelectedDriverId] = useState<string>("")
+  const [selectedRegion, setSelectedRegion] = useState<string>("all")
   const [payPeriodStart, setPayPeriodStart] = useState("")
   const [payPeriodEnd, setPayPeriodEnd] = useState("")
   const { toast } = useToast()
@@ -117,6 +119,9 @@ export default function PayrollSummaryPage() {
   // Only completed routes count toward pay, filtered to when the route was
   // actually finished (falls back to scheduled start if actual_end_time
   // isn't set, so a completed route with missing data doesn't just vanish).
+  const filteredDriversForDropdown =
+    selectedRegion === "all" ? drivers : drivers.filter((d: any) => d.drivers?.[0]?.region === selectedRegion)
+
   const relevantRoutes = routes.filter((r: any) => {
     if (r.status !== "completed") return false
     if (selectedDriverId && r.driver_id !== selectedDriverId) return false
@@ -217,7 +222,11 @@ export default function PayrollSummaryPage() {
 
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <Label>Region</Label>
+                  <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+                </div>
                 <div>
                   <Label>Driver</Label>
                   <Select value={selectedDriverId} onValueChange={setSelectedDriverId}>
@@ -225,7 +234,7 @@ export default function PayrollSummaryPage() {
                       <SelectValue placeholder="Select a driver" />
                     </SelectTrigger>
                     <SelectContent>
-                      {drivers.map((driver) => (
+                      {filteredDriversForDropdown.map((driver) => (
                         <SelectItem key={driver.id} value={driver.id}>
                           {driver.first_name} {driver.last_name}
                         </SelectItem>

@@ -25,11 +25,13 @@ import {
 } from "recharts"
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers } from "@/app/actions/data-actions"
+import { RegionFilter } from "@/components/region-filter"
 import { calculateOnTimeRate, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function PerformanceDashboard() {
   const [timeRange, setTimeRange] = useState("30")
+  const [selectedRegion, setSelectedRegion] = useState("all")
   const [driverPerformance, setDriverPerformance] = useState<any[]>([])
   const [allLogs, setAllLogs] = useState<any[]>([])
   const [allRoutes, setAllRoutes] = useState<any[]>([])
@@ -72,6 +74,7 @@ export default function PerformanceDashboard() {
           id: driver.id,
           name: `${driver.first_name} ${driver.last_name}`,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`,
+          region: driver.drivers?.[0]?.region || null,
           totalDeliveries: driverLogs.length,
           onTimeRate: calculateOnTimeRate(driverLogs, routesById, gracePeriod),
           avgDeliveryTime: 0, // no reliable duration data source yet
@@ -96,14 +99,17 @@ export default function PerformanceDashboard() {
     }
   }
 
-  const totalDeliveries = driverPerformance.reduce((sum, d) => sum + d.totalDeliveries, 0)
-  const avgOnTimeRate = driverPerformance.length > 0 
-    ? Math.round(driverPerformance.reduce((sum, d) => sum + d.onTimeRate, 0) / driverPerformance.length)
+  const filteredDriverPerformance =
+    selectedRegion === "all" ? driverPerformance : driverPerformance.filter((d) => d.region === selectedRegion)
+
+  const totalDeliveries = filteredDriverPerformance.reduce((sum, d) => sum + d.totalDeliveries, 0)
+  const avgOnTimeRate = filteredDriverPerformance.length > 0 
+    ? Math.round(filteredDriverPerformance.reduce((sum, d) => sum + d.onTimeRate, 0) / filteredDriverPerformance.length)
     : 0
-  const avgDeliveryTime = driverPerformance.length > 0
-    ? Math.round(driverPerformance.reduce((sum, d) => sum + d.avgDeliveryTime, 0) / driverPerformance.length)
+  const avgDeliveryTime = filteredDriverPerformance.length > 0
+    ? Math.round(filteredDriverPerformance.reduce((sum, d) => sum + d.avgDeliveryTime, 0) / filteredDriverPerformance.length)
     : 0
-  const topPerformer = [...driverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate)[0]
+  const topPerformer = [...filteredDriverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate)[0]
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
   const today = new Date()
@@ -154,24 +160,27 @@ export default function PerformanceDashboard() {
           {/* Time Range Selector */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Performance Metrics</h2>
-            <Select value={timeRange} onValueChange={setTimeRange}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select time range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">Last 7 days</SelectItem>
-                <SelectItem value="30">Last 30 days</SelectItem>
-                <SelectItem value="90">Last 90 days</SelectItem>
-                <SelectItem value="365">Last year</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+              <Select value={timeRange} onValueChange={setTimeRange}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select time range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                  <SelectItem value="365">Last year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {loading ? (
             <Card className="p-12 text-center">
               <p className="text-muted-foreground">Loading performance data...</p>
             </Card>
-          ) : driverPerformance.length === 0 ? (
+          ) : filteredDriverPerformance.length === 0 ? (
             <Card className="p-12 text-center">
               <p className="text-muted-foreground">No driver performance data available yet.</p>
             </Card>
@@ -314,7 +323,7 @@ export default function PerformanceDashboard() {
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Driver Performance Rankings</h3>
                     <div className="space-y-4">
-                      {[...driverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate).map((driver, index) => (
+                      {[...filteredDriverPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate).map((driver, index) => (
                         <div
                           key={driver.id}
                           className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"

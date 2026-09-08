@@ -21,6 +21,7 @@ import { PharmacyNotificationSettings } from "@/components/pharmacy-notification
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
+import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
@@ -86,7 +87,7 @@ export default function PharmacyDashboard() {
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
         .from("route_stops")
-        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude)")
+        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude, region)")
         .eq("pharmacy_id", pharmacyUser.pharmacy_id)
         .order("created_at", { ascending: false })
 
@@ -146,8 +147,8 @@ export default function PharmacyDashboard() {
           // addresses are free text with no stored coordinates
           coordinates: {
             pickup: {
-              lat: stop.pharmacies?.latitude || 33.7175,
-              lng: stop.pharmacies?.longitude || -117.8311,
+              lat: stop.pharmacies?.latitude || REGION_FALLBACK_COORDS[stop.pharmacies?.region as Region]?.lat || 39.8283,
+              lng: stop.pharmacies?.longitude || REGION_FALLBACK_COORDS[stop.pharmacies?.region as Region]?.lng || -98.5795,
             },
             dropoff: null as { lat: number; lng: number } | null,
           },
@@ -187,18 +188,29 @@ export default function PharmacyDashboard() {
   }
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("userRole")
-      localStorage.removeItem("userName")
-      localStorage.removeItem("userEmail")
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
+      toast({
+        title: "Logged out successfully",
+        description: "You have been logged out of your account.",
+      })
+    } catch (error) {
+      console.error("Sign out error:", error)
+      toast({
+        title: "Logged out",
+        description: "Signed out locally - your session may still be active on the server.",
+      })
+    } finally {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("userRole")
+        localStorage.removeItem("userName")
+        localStorage.removeItem("userEmail")
+      }
+      router.push("/auth/login")
     }
-    toast({
-      title: "Logged out successfully",
-      description: "You have been logged out of your account.",
-    })
-    router.push("/auth/login")
   }
 
   const incomingDeliveries = deliveries.filter((d) => d.status === "pending" || d.status === "in-progress")

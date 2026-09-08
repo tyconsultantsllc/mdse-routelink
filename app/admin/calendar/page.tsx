@@ -10,6 +10,8 @@ import { ChevronLeft, ChevronRight, Plus, CalendarIcon } from 'lucide-react'
 import { useState, useEffect } from "react"
 import { AddRouteModal } from "@/components/add-route-modal"
 import { getRoutes, getUsers } from "@/app/actions/data-actions"
+import { RegionBadge } from "@/components/region-badge"
+import { getRouteRegion, type Region } from "@/lib/region-utils"
 import { useToast } from "@/components/ui/use-toast"
 
 interface ScheduledRoute {
@@ -20,6 +22,7 @@ interface ScheduledRoute {
   startTime: string
   endTime: string
   priority: "low" | "medium" | "high" | "urgent"
+  region: Region | null
   stops: number
   stopDetails: { pharmacyId: string; pharmacyName: string; pickupAddress: string; dropoffAddress: string }[]
   status: "scheduled" | "in-progress" | "completed"
@@ -75,6 +78,7 @@ export default function CalendarView() {
             startTime: new Date(route.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             endTime: route.end_time ? new Date(route.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
             priority: route.priority || 'medium',
+            region: getRouteRegion(route.route_stops || []),
             stops: route.route_stops?.length || 0,
             stopDetails: (route.route_stops || [])
               .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
@@ -327,6 +331,7 @@ export default function CalendarView() {
                         <Badge className={getPriorityColor(route.priority)}>
                           {route.priority.charAt(0).toUpperCase() + route.priority.slice(1)}
                         </Badge>
+                        <RegionBadge region={route.region} />
                         <Badge className={getStatusColor(route.status)}>
                           {route.status === "in-progress"
                             ? "In Progress"

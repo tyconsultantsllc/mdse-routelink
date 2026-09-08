@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button" // Fixed import to use named export instead of default
 import { createClient } from "@/lib/supabase/client"
+import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 
 const AdminMap = dynamic(() => import("@/components/admin-map"), {
   ssr: false,
@@ -146,7 +147,10 @@ export default function AdminDashboard() {
           status: mapDriverStatus(d.status),
           statusText: d.status === "on_break" ? "On break" : "On time",
           progress: `${d.completedStops}/${d.totalStops} stops`,
-          location: { lat: d.current_latitude || 33.7175, lng: d.current_longitude || -117.8311 },
+          location: {
+            lat: d.current_latitude || REGION_FALLBACK_COORDS[d.region as Region]?.lat || 39.8283,
+            lng: d.current_longitude || REGION_FALLBACK_COORDS[d.region as Region]?.lng || -98.5795,
+          },
         }))
       )
 

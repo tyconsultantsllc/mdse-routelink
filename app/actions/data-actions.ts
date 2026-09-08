@@ -97,7 +97,7 @@ export async function getRoutes() {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('routes')
-    .select('*, route_stops(*, pharmacies(name, address, latitude, longitude))')
+    .select('*, route_stops(*, pharmacies(name, address, latitude, longitude, region))')
     .order('created_at', { ascending: false })
   
   if (error) throw error
@@ -151,6 +151,7 @@ export async function createUser(input: {
   vehiclePlate?: string
   licenseNumber?: string
   pharmacyId?: string
+  region?: string
 }) {
   const { role: callerRole } = await verifyAuth()
 
@@ -179,6 +180,7 @@ export async function createUser(input: {
       vehicle_plate: input.vehiclePlate,
       license_number: input.licenseNumber,
       pharmacy_id: input.pharmacyId,
+      region: input.region,
     },
   })
 
@@ -281,6 +283,7 @@ export async function updateUser(userId: string, updates: {
   vehiclePlate?: string
   licenseNumber?: string
   role?: string
+  region?: string
 }) {
   const { role } = await verifyAuth()
   
@@ -304,13 +307,14 @@ export async function updateUser(userId: string, updates: {
   if (userError) throw userError
 
   // Update drivers table if driver-specific fields are provided
-  if (updates.vehicleType || updates.vehiclePlate || updates.licenseNumber) {
+  if (updates.vehicleType || updates.vehiclePlate || updates.licenseNumber || updates.region) {
     const { error: driverError } = await supabase
       .from('drivers')
       .update({
         vehicle_type: updates.vehicleType,
         vehicle_plate: updates.vehiclePlate,
         license_number: updates.licenseNumber,
+        region: updates.region,
       })
       .eq('id', userId)
 
@@ -356,7 +360,7 @@ export async function getDashboardStats() {
   // fetching every row to count client-side — worth doing before that page
   // is relied on for real reporting.
   const [routesResult, driversResult, logsResult] = await Promise.all([
-    supabase.from('routes').select('*, route_stops(*, pharmacies(name, address, latitude, longitude))'),
+    supabase.from('routes').select('*, route_stops(*, pharmacies(name, address, latitude, longitude, region))'),
     supabase.from('drivers').select('*'),
     supabase.from('delivery_logs').select('*').order('timestamp', { ascending: false }).limit(1000)
   ])

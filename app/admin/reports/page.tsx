@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/chart"
 import { Line, LineChart, Bar, BarChart, Pie, PieChart, XAxis, YAxis, CartesianGrid, Cell } from "recharts"
 import { ExportDialog } from "@/components/export-dialog"
+import { RegionFilter } from "@/components/region-filter"
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers, getPharmacies } from "@/app/actions/data-actions"
 import { calculateOnTimeRate, isDeliveryOnTime, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
@@ -25,6 +26,7 @@ export default function Reports() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>(null)
+  const [selectedRegion, setSelectedRegion] = useState("all")
   const { toast } = useToast()
 
   const [gracePeriod, setGracePeriod] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
@@ -55,14 +57,22 @@ export default function Reports() {
     }
   }
 
-  const totalDeliveries = stats?.logs?.length || 0
-  const failedDeliveries = stats?.logs?.filter((log: any) => log.action === 'failed').length || 0
-  const successfulDeliveries = stats?.logs?.filter((log: any) => log.action === 'delivered').length || 0
+  const driverRegionById = new Map(
+    (stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, u.drivers?.[0]?.region]),
+  )
+  const filteredLogs =
+    selectedRegion === "all"
+      ? stats?.logs || []
+      : (stats?.logs || []).filter((log: any) => driverRegionById.get(log.driver_id) === selectedRegion)
+
+  const totalDeliveries = filteredLogs.length
+  const failedDeliveries = filteredLogs.filter((log: any) => log.action === 'failed').length
+  const successfulDeliveries = filteredLogs.filter((log: any) => log.action === 'delivered').length
 
   const routesById = new Map<string, { end_time: string | null }>(
     (stats?.routes || []).map((r: any) => [r.id, { end_time: r.end_time }]),
   )
-  const onTimeRate = stats?.logs ? calculateOnTimeRate(stats.logs, routesById, gracePeriod) : 0
+  const onTimeRate = filteredLogs.length ? calculateOnTimeRate(filteredLogs, routesById, gracePeriod) : 0
   const avgDeliveryTime = 0 // no reliable duration data source yet - see notes on the Performance page
 
   // Real month-by-month counts from actual delivery log timestamps, instead
@@ -71,14 +81,14 @@ export default function Reports() {
   const now = new Date()
   const deliveriesData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1)
-    const count = (stats?.logs || []).filter((log: any) => {
+    const count = filteredLogs.filter((log: any) => {
       const logDate = new Date(log.timestamp)
       return logDate.getFullYear() === d.getFullYear() && logDate.getMonth() === d.getMonth()
     }).length
     return { month: monthNames[d.getMonth()], deliveries: count }
   })
 
-  const onTimeDeliveredCount = (stats?.logs || []).filter(
+  const onTimeDeliveredCount = filteredLogs.filter(
     (log: any) => log.action === 'delivered' && isDeliveryOnTime(log.timestamp, routesById.get(log.route_id)?.end_time, gracePeriod) === true,
   ).length
   const lateDeliveredCount = successfulDeliveries - onTimeDeliveredCount
@@ -90,16 +100,18 @@ export default function Reports() {
   ]
 
   const driversData = stats?.users
-    ?.filter((u: any) => u.role === 'driver')
+    ?.filter((u: any) => u.role === 'driver' && (selectedRegion === "all" || u.drivers?.[0]?.region === selectedRegion))
     .map((driver: any) => ({
       name: `${driver.first_name} ${driver.last_name}`,
-      deliveries: stats.logs.filter((log: any) => log.driver_id === driver.id).length
+      deliveries: filteredLogs.filter((log: any) => log.driver_id === driver.id).length
     })) || []
 
-  const pharmaciesData = (stats?.pharmacies || []).map((pharmacy: any) => ({
-    name: pharmacy.name,
-    deliveries: (stats?.logs || []).filter((log: any) => log.pharmacy_id === pharmacy.id).length,
-  }))
+  const pharmaciesData = (stats?.pharmacies || [])
+    .filter((pharmacy: any) => selectedRegion === "all" || pharmacy.region === selectedRegion)
+    .map((pharmacy: any) => ({
+      name: pharmacy.name,
+      deliveries: filteredLogs.filter((log: any) => log.pharmacy_id === pharmacy.id).length,
+    }))
 
   const driverNameById = new Map((stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]))
   const pharmacyNameById = new Map((stats?.pharmacies || []).map((p: any) => [p.id, p.name]))
@@ -111,7 +123,7 @@ export default function Reports() {
       { label: "Avg Delivery Time", value: `${avgDeliveryTime} min` },
     ],
     headers: ["Date", "Driver", "Pharmacy", "Status"],
-    rows: (stats?.logs || []).map((log: any) => [
+    rows: filteredLogs.map((log: any) => [
       new Date(log.timestamp).toLocaleString(),
       driverNameById.get(log.driver_id) || "Unknown",
       pharmacyNameById.get(log.pharmacy_id) || "Unknown",
@@ -140,6 +152,7 @@ export default function Reports() {
                 <SelectItem value="all">All Time</SelectItem>
               </SelectContent>
             </Select>
+            <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button onClick={() => setExportDialogOpen(true)}>

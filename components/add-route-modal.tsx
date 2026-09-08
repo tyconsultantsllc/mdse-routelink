@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
 import { geocodeAddress } from "@/lib/geocode"
+import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 
 interface AddRouteModalProps {
   open: boolean
@@ -55,7 +56,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       dropoffAddress: "",
     },
   ])
-  const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string; latitude?: number; longitude?: number }>>([])
+  const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string; latitude?: number; longitude?: number; region?: string }>>([])
   const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [optimizedDurationMinutes, setOptimizedDurationMinutes] = useState<number | null>(null)
@@ -82,6 +83,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         address: p.address,
         latitude: p.latitude,
         longitude: p.longitude,
+        region: p.region,
       })))
     } catch (error) {
       toast({
@@ -238,9 +240,10 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       if (geocoded) return geocoded
     }
 
-    // Last resort if geocoding fails entirely (e.g. malformed address) —
-    // an approximate Orange County center point, better than crashing.
-    return { lat: 33.7175, lng: -117.8311 }
+    // Last resort if geocoding fails entirely (e.g. malformed address) -
+    // the pharmacy's own region center, better than a fixed point that
+    // could be a whole state away from where it actually is.
+    return REGION_FALLBACK_COORDS[pharmacy?.region as Region] || { lat: 39.8283, lng: -98.5795 }
   }
 
   const handleOptimizedStops = (optimizedStops: any[], estimatedDuration?: number) => {

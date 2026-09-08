@@ -13,6 +13,8 @@ import { DriverLocationModal } from "@/components/driver-location-modal"
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getUsers } from "@/app/actions/data-actions"
+import { RegionBadge } from "@/components/region-badge"
+import { RegionFilter } from "@/components/region-filter"
 
 export default function DriverManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -20,6 +22,7 @@ export default function DriverManagement() {
   const [viewingLocationDriver, setViewingLocationDriver] = useState<any>(null)
   const { toast } = useToast()
   const [drivers, setDrivers] = useState<any[]>([])
+  const [selectedRegion, setSelectedRegion] = useState("all")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -67,6 +70,9 @@ export default function DriverManagement() {
     }
   }
 
+  const filteredDrivers =
+    selectedRegion === "all" ? drivers : drivers.filter((d) => d.drivers?.[0]?.region === selectedRegion)
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -78,17 +84,20 @@ export default function DriverManagement() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-foreground">Registered Drivers</h2>
-              <Button onClick={() => setIsAddModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Driver
-              </Button>
+              <div className="flex items-center gap-3">
+                <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+                <Button onClick={() => setIsAddModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Driver
+                </Button>
+              </div>
             </div>
 
             {loading ? (
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">Loading drivers...</p>
               </Card>
-            ) : drivers.length === 0 ? (
+            ) : filteredDrivers.length === 0 ? (
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">No drivers found. Add your first driver to get started.</p>
               </Card>
@@ -99,6 +108,9 @@ export default function DriverManagement() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Driver
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Region
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Contact
@@ -115,7 +127,7 @@ export default function DriverManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
-                    {drivers.map((driver) => {
+                    {filteredDrivers.map((driver) => {
                       const driverDetails = driver.drivers?.[0]
                       const driverName = `${driver.first_name || ""} ${driver.last_name || ""}`.trim()
                       return (
@@ -134,6 +146,9 @@ export default function DriverManagement() {
                                 <div className="text-sm text-muted-foreground">Driver</div>
                               </div>
                             </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <RegionBadge region={driverDetails?.region} />
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-foreground">{driver.phone || "N/A"}</div>

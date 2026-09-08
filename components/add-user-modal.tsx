@@ -30,6 +30,7 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
     vehiclePlate: "",
     licenseNumber: "",
     pharmacyId: "",
+    region: "",
   })
   const [pharmacies, setPharmacies] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -63,6 +64,7 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
         vehiclePlate: formData.vehiclePlate,
         licenseNumber: formData.licenseNumber,
         pharmacyId: formData.pharmacyId,
+        region: formData.region,
       })
 
       toast({
@@ -96,6 +98,7 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
       vehiclePlate: "",
       licenseNumber: "",
       pharmacyId: "",
+      region: "",
     })
   }
 
@@ -177,6 +180,18 @@ export function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModalProps) 
 
           {formData.role === "driver" && (
             <>
+              <div>
+                <Label htmlFor="region">Region *</Label>
+                <Select value={formData.region} onValueChange={(value) => setFormData({ ...formData, region: value })}>
+                  <SelectTrigger id="region">
+                    <SelectValue placeholder="Select a region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="socal">Southern California</SelectItem>
+                    <SelectItem value="minnesota">Minnesota</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label htmlFor="vehicleType">Vehicle Type</Label>
                 <Input

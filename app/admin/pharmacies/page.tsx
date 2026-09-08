@@ -11,12 +11,15 @@ import { AddPharmacyModal } from "@/components/add-pharmacy-modal"
 import { EditPharmacyModal } from "@/components/edit-pharmacy-modal"
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { RegionBadge } from "@/components/region-badge"
+import { RegionFilter } from "@/components/region-filter"
 
 export default function PharmacyManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPharmacy, setEditingPharmacy] = useState<any>(null)
   const { toast } = useToast()
   const [pharmacies, setPharmacies] = useState<any[]>([])
+  const [selectedRegion, setSelectedRegion] = useState("all")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -88,6 +91,9 @@ export default function PharmacyManagement() {
     setIsModalOpen(false)
   }
 
+  const filteredPharmacies =
+    selectedRegion === "all" ? pharmacies : pharmacies.filter((p) => p.region === selectedRegion)
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -99,17 +105,20 @@ export default function PharmacyManagement() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-foreground">Registered Pharmacies</h2>
-              <Button onClick={() => setIsModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Pharmacy
-              </Button>
+              <div className="flex items-center gap-3">
+                <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+                <Button onClick={() => setIsModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Pharmacy
+                </Button>
+              </div>
             </div>
 
             {loading ? (
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">Loading pharmacies...</p>
               </Card>
-            ) : pharmacies.length === 0 ? (
+            ) : filteredPharmacies.length === 0 ? (
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">No pharmacies found. Add your first pharmacy to get started.</p>
               </Card>
@@ -120,6 +129,9 @@ export default function PharmacyManagement() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Pharmacy
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Region
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Location
@@ -133,7 +145,7 @@ export default function PharmacyManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
-                    {pharmacies.map((pharmacy) => (
+                    {filteredPharmacies.map((pharmacy) => (
                       <tr key={pharmacy.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
@@ -145,6 +157,9 @@ export default function PharmacyManagement() {
                               <div className="text-sm text-muted-foreground">{pharmacy.license_number || "N/A"}</div>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <RegionBadge region={pharmacy.region} />
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-foreground">{pharmacy.address}</div>
