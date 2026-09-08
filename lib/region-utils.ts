@@ -1,5 +1,20 @@
 export type Region = "socal" | "minnesota"
 
+/**
+ * Reads the nested driver record from a user row fetched with
+ * `.select('*, drivers(*)')`. Because drivers.id is both that table's
+ * primary key and the foreign key to users.id, this is a strict one-to-one
+ * relationship - Supabase returns it as a single object, not an array.
+ * Every `.drivers?.[0]` access in this codebase was wrong because of that;
+ * this is the one place that logic should live going forward.
+ */
+export function getDriverDetails(userRow: any): any {
+  if (!userRow) return null
+  const drivers = userRow.drivers
+  if (Array.isArray(drivers)) return drivers[0] || null
+  return drivers || null
+}
+
 export const REGION_LABELS: Record<Region, string> = {
   socal: "SoCal",
   minnesota: "MN",

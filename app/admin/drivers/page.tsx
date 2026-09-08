@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { getUsers } from "@/app/actions/data-actions"
 import { RegionBadge } from "@/components/region-badge"
 import { RegionFilter } from "@/components/region-filter"
+import { getDriverDetails } from "@/lib/region-utils"
 
 export default function DriverManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -71,7 +72,7 @@ export default function DriverManagement() {
   }
 
   const filteredDrivers =
-    selectedRegion === "all" ? drivers : drivers.filter((d) => d.drivers?.[0]?.region === selectedRegion)
+    selectedRegion === "all" ? drivers : drivers.filter((d) => getDriverDetails(d)?.region === selectedRegion)
 
   return (
     <TooltipProvider>
@@ -128,7 +129,7 @@ export default function DriverManagement() {
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
                     {filteredDrivers.map((driver) => {
-                      const driverDetails = driver.drivers?.[0]
+                      const driverDetails = getDriverDetails(driver)
                       const driverName = `${driver.first_name || ""} ${driver.last_name || ""}`.trim()
                       return (
                         <tr key={driver.id}>
@@ -221,9 +222,9 @@ export default function DriverManagement() {
             open={!!viewingLocationDriver}
             onOpenChange={(open) => !open && setViewingLocationDriver(null)}
             driverName={`${viewingLocationDriver.first_name || ""} ${viewingLocationDriver.last_name || ""}`.trim()}
-            latitude={viewingLocationDriver.drivers?.[0]?.current_latitude ?? null}
-            longitude={viewingLocationDriver.drivers?.[0]?.current_longitude ?? null}
-            lastUpdate={viewingLocationDriver.drivers?.[0]?.last_location_update ?? null}
+            latitude={getDriverDetails(viewingLocationDriver)?.current_latitude ?? null}
+            longitude={getDriverDetails(viewingLocationDriver)?.current_longitude ?? null}
+            lastUpdate={getDriverDetails(viewingLocationDriver)?.last_location_update ?? null}
           />
         )}
       </div>

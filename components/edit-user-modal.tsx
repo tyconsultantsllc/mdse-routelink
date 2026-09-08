@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getDriverDetails } from "@/lib/region-utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
@@ -39,10 +40,10 @@ export function EditUserModal({ isOpen, onClose, user, onSuccess }: EditUserModa
         lastName: user.last_name || "",
         email: user.email || "",
         phone: user.phone || "",
-        vehicleType: user.drivers?.[0]?.vehicle_type || "",
-        vehiclePlate: user.drivers?.[0]?.vehicle_plate || "",
-        licenseNumber: user.drivers?.[0]?.license_number || "",
-        region: user.drivers?.[0]?.region || "",
+        vehicleType: getDriverDetails(user)?.vehicle_type || "",
+        vehiclePlate: getDriverDetails(user)?.vehicle_plate || "",
+        licenseNumber: getDriverDetails(user)?.license_number || "",
+        region: getDriverDetails(user)?.region || "",
       })
     }
   }, [user])

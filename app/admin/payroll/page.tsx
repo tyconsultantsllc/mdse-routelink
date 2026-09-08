@@ -14,6 +14,7 @@ import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { getRoutes, getUsers } from "@/app/actions/data-actions"
 import { RegionFilter } from "@/components/region-filter"
+import { getDriverDetails } from "@/lib/region-utils"
 import { generatePaystubHTML, printReport, exportToCSV } from "@/lib/export-utils"
 import { getAppSetting, setAppSetting } from "@/lib/app-settings"
 
@@ -120,7 +121,7 @@ export default function PayrollSummaryPage() {
   // actually finished (falls back to scheduled start if actual_end_time
   // isn't set, so a completed route with missing data doesn't just vanish).
   const filteredDriversForDropdown =
-    selectedRegion === "all" ? drivers : drivers.filter((d: any) => d.drivers?.[0]?.region === selectedRegion)
+    selectedRegion === "all" ? drivers : drivers.filter((d: any) => getDriverDetails(d)?.region === selectedRegion)
 
   const relevantRoutes = routes.filter((r: any) => {
     if (r.status !== "completed") return false

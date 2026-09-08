@@ -17,6 +17,7 @@ import {
 import { Line, LineChart, Bar, BarChart, Pie, PieChart, XAxis, YAxis, CartesianGrid, Cell } from "recharts"
 import { ExportDialog } from "@/components/export-dialog"
 import { RegionFilter } from "@/components/region-filter"
+import { getDriverDetails } from "@/lib/region-utils"
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers, getPharmacies } from "@/app/actions/data-actions"
 import { calculateOnTimeRate, isDeliveryOnTime, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
@@ -58,7 +59,7 @@ export default function Reports() {
   }
 
   const driverRegionById = new Map(
-    (stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, u.drivers?.[0]?.region]),
+    (stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, getDriverDetails(u)?.region]),
   )
   const filteredLogs =
     selectedRegion === "all"
@@ -100,7 +101,7 @@ export default function Reports() {
   ]
 
   const driversData = stats?.users
-    ?.filter((u: any) => u.role === 'driver' && (selectedRegion === "all" || u.drivers?.[0]?.region === selectedRegion))
+    ?.filter((u: any) => u.role === 'driver' && (selectedRegion === "all" || getDriverDetails(u)?.region === selectedRegion))
     .map((driver: any) => ({
       name: `${driver.first_name} ${driver.last_name}`,
       deliveries: filteredLogs.filter((log: any) => log.driver_id === driver.id).length

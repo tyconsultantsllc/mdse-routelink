@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useToast } from "@/hooks/use-toast"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { createClient } from "@/lib/supabase/client"
+import { getDriverDetails } from "@/lib/region-utils"
 import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin } from "lucide-react"
 
 export default function SettingsPage() {
@@ -118,7 +119,7 @@ export default function SettingsPage() {
             .map((u: any) => ({
               id: u.id,
               name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
-              region: u.drivers?.[0]?.region || "",
+              region: getDriverDetails(u)?.region || "",
             })),
         )
       } catch (error) {
@@ -146,7 +147,6 @@ export default function SettingsPage() {
       const driverResults = await Promise.all(
         bulkDrivers.map(async (d) => {
           try {
-            console.log(`[diagnostic] Sending region update for driver ${d.name} (${d.id}):`, d.region)
             await updateUser(d.id, { region: d.region || undefined })
             return { name: d.name, error: null }
           } catch (err: any) {
@@ -173,13 +173,12 @@ export default function SettingsPage() {
       const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
       const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
       const driverUsers = users.filter((u: any) => u.role === "driver")
-      console.log("[diagnostic] Raw driver user shape on reload:", JSON.stringify(driverUsers[0], null, 2))
       setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
       setBulkDrivers(
         driverUsers.map((u: any) => ({
             id: u.id,
             name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
-            region: u.drivers?.[0]?.region || "",
+            region: getDriverDetails(u)?.region || "",
           })),
       )
     } catch (error: any) {

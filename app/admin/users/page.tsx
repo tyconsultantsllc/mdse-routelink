@@ -12,6 +12,7 @@ import { AdminSidebar } from "@/components/admin-sidebar"
 import { AddUserModal } from "@/components/add-user-modal"
 import { EditUserModal } from "@/components/edit-user-modal"
 import { RegionBadge } from "@/components/region-badge"
+import { getDriverDetails } from "@/lib/region-utils"
 import { useToast } from "@/hooks/use-toast"
 
 export default function UsersPage() {
@@ -187,7 +188,7 @@ export default function UsersPage() {
                               {user.role === "pharmacy" && "Pharmacy User"}
                               {user.role === "admin" && "Administrator"}
                             </span>
-                            {user.role === "driver" && <RegionBadge region={user.drivers?.[0]?.region} />}
+                            {user.role === "driver" && <RegionBadge region={getDriverDetails(user)?.region} />}
                           </div>
                         </TableCell>
                         <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>

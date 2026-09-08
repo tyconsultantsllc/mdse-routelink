@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { getDriverDetails } from "@/lib/region-utils"
 
 interface AssignDriverModalProps {
   open: boolean
@@ -49,7 +50,7 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
         const activeRoutes = routes.filter(
           (r: any) => r.driver_id === u.id && (r.status === "pending" || r.status === "in-progress"),
         ).length
-        const rawStatus = u.drivers?.[0]?.status
+        const rawStatus = getDriverDetails(u)?.status
 
         return {
           id: u.id,

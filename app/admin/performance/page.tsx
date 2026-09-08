@@ -26,6 +26,7 @@ import {
 import { useState, useEffect } from "react"
 import { getDashboardStats, getUsers } from "@/app/actions/data-actions"
 import { RegionFilter } from "@/components/region-filter"
+import { getDriverDetails } from "@/lib/region-utils"
 import { calculateOnTimeRate, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -74,7 +75,7 @@ export default function PerformanceDashboard() {
           id: driver.id,
           name: `${driver.first_name} ${driver.last_name}`,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`,
-          region: driver.drivers?.[0]?.region || null,
+          region: getDriverDetails(driver)?.region || null,
           totalDeliveries: driverLogs.length,
           onTimeRate: calculateOnTimeRate(driverLogs, routesById, gracePeriod),
           avgDeliveryTime: 0, // no reliable duration data source yet
