@@ -324,6 +324,8 @@ export async function updateUser(userId: string, updates: {
 
     if (driverError) throw driverError
 
+    console.log(`[diagnostic] updateUser driver write for ${userId}:`, JSON.stringify(driverData))
+
     // Supabase reports success even when zero rows matched the filter -
     // that's not an error, just nothing to update, which silently produces
     // "it said it worked but nothing changed" if this driver has no row in

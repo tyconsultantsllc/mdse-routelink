@@ -146,6 +146,7 @@ export default function SettingsPage() {
       const driverResults = await Promise.all(
         bulkDrivers.map(async (d) => {
           try {
+            console.log(`[diagnostic] Sending region update for driver ${d.name} (${d.id}):`, d.region)
             await updateUser(d.id, { region: d.region || undefined })
             return { name: d.name, error: null }
           } catch (err: any) {
@@ -171,11 +172,11 @@ export default function SettingsPage() {
       // screen reflects what's actually saved - not just what was clicked.
       const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
       const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
+      const driverUsers = users.filter((u: any) => u.role === "driver")
+      console.log("[diagnostic] Raw driver user shape on reload:", JSON.stringify(driverUsers[0], null, 2))
       setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
       setBulkDrivers(
-        users
-          .filter((u: any) => u.role === "driver")
-          .map((u: any) => ({
+        driverUsers.map((u: any) => ({
             id: u.id,
             name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
             region: u.drivers?.[0]?.region || "",
