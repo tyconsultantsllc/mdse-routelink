@@ -397,9 +397,6 @@ export async function createRoute(routeData: {
   endTime?: string
   estimatedDuration?: number
   priority: string
-  payRouteType?: string
-  isLateNight?: boolean
-  isHighVolume?: boolean
   stops: Array<{
     pharmacyId: string
     pickupAddress: string
@@ -439,9 +436,6 @@ export async function createRoute(routeData: {
       end_time: endTimeTimestamp,
       estimated_duration: routeData.estimatedDuration || null,
       priority: routeData.priority,
-      pay_route_type: routeData.payRouteType || null,
-      is_late_night: routeData.isLateNight || false,
-      is_high_volume: routeData.isHighVolume || false,
       status: 'pending',
       created_at: new Date().toISOString(),
     })
@@ -574,9 +568,6 @@ export async function updateRoute(routeId: number, routeData: {
   estimatedDuration?: number
   priority: string
   status: string
-  payRouteType?: string
-  isLateNight?: boolean
-  isHighVolume?: boolean
   stops: Array<{
     id?: string
     pharmacyId: string
@@ -621,9 +612,6 @@ export async function updateRoute(routeId: number, routeData: {
       estimated_duration: routeData.estimatedDuration,
       priority: routeData.priority,
       status: routeData.status,
-      pay_route_type: routeData.payRouteType || null,
-      is_late_night: routeData.isLateNight || false,
-      is_high_volume: routeData.isHighVolume || false,
       updated_at: new Date().toISOString(),
     })
     .eq('id', routeId)
@@ -764,51 +752,6 @@ export async function broadcastMessageToAllDrivers(content: string) {
   if (insertError) throw insertError
 
   return { sentTo: messagesToInsert.length }
-}
-
-export async function saveDriverPayrollInfo(driverId: string, address: string, ssnLast4?: string) {
-  const { role } = await verifyAuth()
-
-  if (role !== 'admin') {
-    throw new Error('Forbidden: Admin access required')
-  }
-
-  const encryptionKey = process.env.PAYROLL_ENCRYPTION_KEY
-  if (!encryptionKey) {
-    throw new Error('PAYROLL_ENCRYPTION_KEY is not configured on the server')
-  }
-
-  const supabase = createAdminClient()
-  const { error } = await supabase.rpc('save_driver_payroll_info', {
-    p_driver_id: driverId,
-    p_address: address || null,
-    p_ssn_last4: ssnLast4 || null,
-    p_encryption_key: encryptionKey,
-  })
-
-  if (error) throw error
-}
-
-export async function getDriverPayrollInfo(driverId: string) {
-  const { role } = await verifyAuth()
-
-  if (role !== 'admin') {
-    throw new Error('Forbidden: Admin access required')
-  }
-
-  const encryptionKey = process.env.PAYROLL_ENCRYPTION_KEY
-  if (!encryptionKey) {
-    throw new Error('PAYROLL_ENCRYPTION_KEY is not configured on the server')
-  }
-
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.rpc('get_driver_payroll_info', {
-    p_driver_id: driverId,
-    p_encryption_key: encryptionKey,
-  })
-
-  if (error) throw error
-  return data?.[0] || null
 }
 
 export async function getPharmacyReports() {

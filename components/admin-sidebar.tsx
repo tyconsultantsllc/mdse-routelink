@@ -20,7 +20,6 @@ import {
   Megaphone,
   MessageSquare,
   AlertCircle,
-  DollarSign,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -39,7 +38,6 @@ const navigation = [
   { name: "Messages", href: "/admin/messages", icon: MessageSquare },
   { name: "Pharmacy Reports", href: "/admin/pharmacy-reports", icon: AlertCircle },
   { name: "Delivery Logs", href: "/admin/logs", icon: Clock },
-  { name: "Payroll", href: "/admin/payroll", icon: DollarSign },
   { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
   { name: "Reports", href: "/admin/reports", icon: BarChart2 },
   { name: "Performance", href: "/admin/performance", icon: TrendingUp },

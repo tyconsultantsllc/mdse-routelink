@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
 
@@ -38,9 +37,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
   const [endTime, setEndTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
   const [status, setStatus] = useState<string>("pending")
-  const [payRouteType, setPayRouteType] = useState<string>("none")
-  const [isLateNight, setIsLateNight] = useState(false)
-  const [isHighVolume, setIsHighVolume] = useState(false)
   const [stops, setStops] = useState<RouteStopForm[]>([])
   const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string }>>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -65,9 +61,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
         setRouteName(routeData.name || "")
         setPriority(routeData.priority || "medium")
         setStatus(routeData.status || "pending")
-        setPayRouteType(routeData.pay_route_type || "none")
-        setIsLateNight(routeData.is_late_night || false)
-        setIsHighVolume(routeData.is_high_volume || false)
         
         if (routeData.start_time) {
           const date = new Date(routeData.start_time)
@@ -161,9 +154,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
         endTime: endTime || undefined,
         priority,
         status,
-        payRouteType: payRouteType === "none" ? undefined : payRouteType,
-        isLateNight,
-        isHighVolume,
         stops: stops.map((stop, index) => ({
           id: stop.id,
           pharmacyId: stop.pharmacyId,
@@ -296,39 +286,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                 </Select>
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="payRouteType">Pay Route Type</Label>
-                <Select value={payRouteType} onValueChange={setPayRouteType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="4_hour">4-Hour Route</SelectItem>
-                    <SelectItem value="6_hour">6-Hour Route</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col justify-end gap-2 pb-1">
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="isLateNight" checked={isLateNight} onCheckedChange={(c) => setIsLateNight(!!c)} />
-                  <Label htmlFor="isLateNight" className="font-normal cursor-pointer">
-                    Late Night
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="isHighVolume" checked={isHighVolume} onCheckedChange={(c) => setIsHighVolume(!!c)} />
-                  <Label htmlFor="isHighVolume" className="font-normal cursor-pointer">
-                    High Volume
-                  </Label>
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground -mt-2">
-              Used for payroll - matches the categories in the driver paystub generator.
-            </p>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">

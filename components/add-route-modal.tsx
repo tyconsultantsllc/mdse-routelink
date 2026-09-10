@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
@@ -42,9 +41,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
-  const [payRouteType, setPayRouteType] = useState<string>("none")
-  const [isLateNight, setIsLateNight] = useState(false)
-  const [isHighVolume, setIsHighVolume] = useState(false)
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false)
   const [preparedStops, setPreparedStops] = useState<any[]>([])
   const [isPreparingOptimizer, setIsPreparingOptimizer] = useState(false)
@@ -144,9 +140,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         endTime: endTime || undefined,
         estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
         priority,
-        payRouteType: payRouteType === "none" ? undefined : payRouteType,
-        isLateNight,
-        isHighVolume,
         stops: stops.map((stop, index) => ({
           pharmacyId: stop.pharmacyId,
           pickupAddress: stop.pickupAddress,
@@ -166,9 +159,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       setEndTime("")
       setOptimizedDurationMinutes(null)
       setPriority("medium")
-      setPayRouteType("none")
-      setIsLateNight(false)
-      setIsHighVolume(false)
       setStops([{
         pharmacyId: "",
         pharmacyName: "",
@@ -378,39 +368,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
               </Select>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="payRouteType">Pay Route Type</Label>
-              <Select value={payRouteType} onValueChange={setPayRouteType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="4_hour">4-Hour Route</SelectItem>
-                  <SelectItem value="6_hour">6-Hour Route</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col justify-end gap-2 pb-1">
-              <div className="flex items-center space-x-2">
-                <Checkbox id="isLateNight" checked={isLateNight} onCheckedChange={(c) => setIsLateNight(!!c)} />
-                <Label htmlFor="isLateNight" className="font-normal cursor-pointer">
-                  Late Night
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="isHighVolume" checked={isHighVolume} onCheckedChange={(c) => setIsHighVolume(!!c)} />
-                <Label htmlFor="isHighVolume" className="font-normal cursor-pointer">
-                  High Volume
-                </Label>
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">
-            Used for payroll - matches the categories in the driver paystub generator.
-          </p>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
