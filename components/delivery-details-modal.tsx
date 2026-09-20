@@ -20,11 +20,11 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
 
   if (!delivery) return null
 
-  const handleViewSignature = async () => {
+  const handleViewSignature = async (type: "delivery" | "return" = "delivery") => {
     setLoadingSignature(true)
     try {
       const { getDeliverySignatureUrl } = await import("@/app/actions/data-actions")
-      const url = await getDeliverySignatureUrl(delivery.routeStopId)
+      const url = await getDeliverySignatureUrl(delivery.routeStopId, type)
       setSignatureUrl(url)
     } catch (error: any) {
       toast({
@@ -78,8 +78,16 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
 
           <div className="flex items-center gap-2">
             <p className="text-xs text-muted-foreground">Status</p>
-            <Badge className={delivery.status === "completed" ? "bg-green-500" : "bg-destructive"}>
-              {delivery.status === "completed" ? "Delivered" : "Failed"}
+            <Badge
+              className={
+                delivery.status === "completed"
+                  ? "bg-green-500"
+                  : delivery.status === "returned"
+                    ? "bg-purple-500"
+                    : "bg-destructive"
+              }
+            >
+              {delivery.status === "completed" ? "Delivered" : delivery.status === "returned" ? "Returned" : "Failed"}
             </Badge>
           </div>
 
@@ -97,8 +105,31 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
             </div>
           )}
 
+          {delivery.status === "returned" && (
+            <>
+              {delivery.failureReason && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Original Failure Reason</p>
+                  <p className="font-medium">{delivery.failureReason}</p>
+                </div>
+              )}
+              {delivery.returnConfirmedBy && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Received Back By</p>
+                  <p className="font-medium">{delivery.returnConfirmedBy}</p>
+                </div>
+              )}
+              {delivery.returnConfirmedAt && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Returned At</p>
+                  <p className="font-medium">{delivery.returnConfirmedAt}</p>
+                </div>
+              )}
+            </>
+          )}
+
           {delivery.status === "completed" && delivery.hasSignature && !signatureUrl && (
-            <Button variant="outline" size="sm" onClick={handleViewSignature} disabled={loadingSignature}>
+            <Button variant="outline" size="sm" onClick={() => handleViewSignature("delivery")} disabled={loadingSignature}>
               <FileSignature className="h-4 w-4 mr-2" />
               {loadingSignature ? "Loading..." : "View Signature"}
             </Button>
@@ -106,6 +137,17 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
 
           {delivery.status === "completed" && !delivery.hasSignature && (
             <p className="text-xs text-muted-foreground italic">No signature on file for this delivery.</p>
+          )}
+
+          {delivery.status === "returned" && delivery.hasReturnSignature && !signatureUrl && (
+            <Button variant="outline" size="sm" onClick={() => handleViewSignature("return")} disabled={loadingSignature}>
+              <FileSignature className="h-4 w-4 mr-2" />
+              {loadingSignature ? "Loading..." : "View Return Signature"}
+            </Button>
+          )}
+
+          {delivery.status === "returned" && !delivery.hasReturnSignature && (
+            <p className="text-xs text-muted-foreground italic">No return signature on file.</p>
           )}
 
           {signatureUrl && (

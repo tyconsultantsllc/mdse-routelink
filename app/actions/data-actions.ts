@@ -114,7 +114,7 @@ export async function getDeliveryLogs(limit = 500) {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('delivery_logs')
-    .select('*, routes(name, priority), route_stops(dropoff_address, recipient_name, signature_path, status)')
+    .select('*, routes(name, priority), route_stops(dropoff_address, recipient_name, signature_path, status, return_confirmed_by, return_signature_path, return_confirmed_at)')
     .order('timestamp', { ascending: false })
     .limit(limit)
   
@@ -858,19 +858,21 @@ export async function resolvePharmacyReport(reportId: string) {
 // those, so this does the authorization check here in application code
 // (does this stop actually belong to this pharmacy?) before using the
 // service-role client to generate the signed URL.
-export async function getDeliverySignatureUrl(stopId: string) {
+export async function getDeliverySignatureUrl(stopId: string, signatureType: 'delivery' | 'return' = 'delivery') {
   const { userId, role } = await verifyAuth()
 
   const supabase = createAdminClient()
 
   const { data: stop, error: stopError } = await supabase
     .from('route_stops')
-    .select('signature_path, pharmacy_id')
+    .select('signature_path, return_signature_path, pharmacy_id')
     .eq('id', stopId)
     .single()
 
   if (stopError) throw stopError
-  if (!stop.signature_path) throw new Error('No signature on file for this delivery')
+
+  const path = signatureType === 'return' ? stop.return_signature_path : stop.signature_path
+  if (!path) throw new Error('No signature on file for this delivery')
 
   if (role !== 'admin') {
     const { data: pharmacyUser } = await supabase
@@ -886,7 +888,7 @@ export async function getDeliverySignatureUrl(stopId: string) {
 
   const { data: signedUrlData, error: urlError } = await supabase.storage
     .from('proof-of-delivery')
-    .createSignedUrl(stop.signature_path, 3600)
+    .createSignedUrl(path, 3600)
 
   if (urlError) throw urlError
 

@@ -69,6 +69,11 @@ export default function DeliveryLogs() {
             dropoffAddress: stopInfo?.dropoff_address || "N/A",
             recipientName: stopInfo?.recipient_name || null,
             hasSignature: !!stopInfo?.signature_path,
+            returnConfirmedBy: stopInfo?.return_confirmed_by || null,
+            hasReturnSignature: !!stopInfo?.return_signature_path,
+            returnConfirmedAt: stopInfo?.return_confirmed_at
+              ? new Date(stopInfo.return_confirmed_at).toLocaleString()
+              : null,
             failureReason: d.action === 'failed' ? (d.notes || "No reason provided") : null,
             latitude: d.latitude ?? null,
             longitude: d.longitude ?? null,
@@ -327,7 +332,9 @@ export default function DeliveryLogs() {
                                     ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
                                     : delivery.status === "pending"
                                       ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                                      : "bg-red-100 text-red-800 hover:bg-red-100"
+                                      : delivery.status === "returned"
+                                        ? "bg-purple-100 text-purple-800 hover:bg-purple-100"
+                                        : "bg-red-100 text-red-800 hover:bg-red-100"
                               }
                             >
                               {delivery.status === "in-progress"

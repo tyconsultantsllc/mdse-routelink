@@ -297,15 +297,23 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
               </div>
 
               {stops.map((stop, index) => {
-                const isResolved = stop.status === "delivered" || stop.status === "failed"
+                const isResolved = stop.status === "delivered" || stop.status === "failed" || stop.status === "returned"
                 return (
                 <div key={index} className={`border rounded-lg p-4 space-y-3 relative ${isResolved ? "bg-muted/50" : ""}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">Stop {index + 1}</Badge>
                       {isResolved && (
-                        <Badge className={stop.status === "delivered" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                          {stop.status === "delivered" ? "Delivered" : "Failed"} - locked
+                        <Badge
+                          className={
+                            stop.status === "delivered"
+                              ? "bg-green-100 text-green-800"
+                              : stop.status === "returned"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-red-100 text-red-800"
+                          }
+                        >
+                          {stop.status === "delivered" ? "Delivered" : stop.status === "returned" ? "Returned" : "Failed"} - locked
                         </Badge>
                       )}
                     </div>

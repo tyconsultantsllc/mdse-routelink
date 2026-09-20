@@ -62,6 +62,7 @@ export default function RouteManagement() {
           const driver = usersData.find((u: any) => u.id === r.driver_id && u.role === "driver")
           const stops = r.route_stops || []
           const failedStops = stops.filter((s: any) => s.status === 'failed').length
+          const returnedStops = stops.filter((s: any) => s.status === 'returned').length
           return {
             id: r.id,
             name: r.name || "Unnamed Route",
@@ -73,6 +74,7 @@ export default function RouteManagement() {
               : null,
             stops: stops.length,
             failedStops,
+            returnedStops,
             startTime: r.start_time
               ? new Date(r.start_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
@@ -315,6 +317,11 @@ export default function RouteManagement() {
                             {route.failedStops > 0 && (
                               <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
                                 {route.failedStops} failed
+                              </Badge>
+                            )}
+                            {route.returnedStops > 0 && (
+                              <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+                                {route.returnedStops} returned
                               </Badge>
                             )}
                           </div>
