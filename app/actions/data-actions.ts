@@ -238,6 +238,57 @@ export async function adminUpdateUserEmail(userId: string, newEmail: string) {
   await supabase.from('users').update({ email: newEmail }).eq('id', userId)
 }
 
+export async function updateOwnPharmacyReturnSignatureMode(mode: 'batch' | 'per_item') {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const { data, error } = await supabase
+    .from('pharmacies')
+    .update({ return_signature_mode: mode })
+    .eq('id', pharmacyUser.pharmacy_id)
+    .select()
+
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('Update did not match any pharmacy record')
+
+  return { success: true }
+}
+
+export async function getOwnPharmacyReturnSignatureMode() {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id, pharmacies(return_signature_mode)')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const pharmacyRow = Array.isArray(pharmacyUser?.pharmacies) ? pharmacyUser.pharmacies[0] : pharmacyUser?.pharmacies
+  return pharmacyRow?.return_signature_mode || 'batch'
+}
+
 export async function updateOwnProfile(updates: {
   firstName?: string
   lastName?: string

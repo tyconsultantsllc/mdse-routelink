@@ -70,6 +70,8 @@ export default function DeliveryLogs() {
             recipientName: stopInfo?.recipient_name || null,
             hasSignature: !!stopInfo?.signature_path,
             failureReason: d.action === 'failed' ? (d.notes || "No reason provided") : null,
+            latitude: d.latitude ?? null,
+            longitude: d.longitude ?? null,
           }
         }) || []
       )

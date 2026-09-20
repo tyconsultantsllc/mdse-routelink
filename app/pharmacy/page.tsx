@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail } from 'lucide-react'
+import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail, PackageCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
+import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
@@ -43,6 +44,7 @@ export default function PharmacyDashboard() {
   const [deliveries, setDeliveries] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
+  const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [myReports, setMyReports] = useState<any[]>([])
 
@@ -319,6 +321,19 @@ export default function PharmacyDashboard() {
                   <Button
                     variant="outline"
                     size="icon"
+                    className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
+                    onClick={() => setDeliverySettingsOpen(true)}
+                  >
+                    <PackageCheck className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Failed Delivery Returns</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
                     onClick={handleLogout}
                     className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
                   >
@@ -509,6 +524,7 @@ export default function PharmacyDashboard() {
         />
       )}
       <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={userEmail} />
+      <PharmacyDeliverySettings open={deliverySettingsOpen} onOpenChange={setDeliverySettingsOpen} />
     </TooltipProvider>
   )
 }

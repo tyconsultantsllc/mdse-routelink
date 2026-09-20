@@ -66,6 +66,8 @@ interface ConfirmDeliveryParams {
   notes: string
   signatureDataUrl: string
   photos?: string[]
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
@@ -99,6 +101,8 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
     pharmacy_id: params.pharmacyId,
     action: "delivered",
     notes: params.notes || null,
+    latitude: params.latitude ?? null,
+    longitude: params.longitude ?? null,
   })
 
   // The stop is already saved at this point; a logging failure shouldn't
@@ -114,6 +118,8 @@ export async function failDeliveryStop(params: {
   pharmacyId: string
   driverId: string
   reason: string
+  latitude?: number | null
+  longitude?: number | null
 }) {
   const supabase = createClient()
 
@@ -134,6 +140,8 @@ export async function failDeliveryStop(params: {
     pharmacy_id: params.pharmacyId,
     action: "failed",
     notes: params.reason,
+    latitude: params.latitude ?? null,
+    longitude: params.longitude ?? null,
   })
 
   if (logError) console.error("Delivery log insert failed:", logError.message)

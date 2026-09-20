@@ -118,6 +118,22 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
               />
             </div>
           )}
+
+          {delivery.latitude != null && delivery.longitude != null && (
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {delivery.status === "completed" ? "Signature Captured At" : "Location When Marked Failed"}
+              </p>
+              <a
+                href={`https://www.google.com/maps?q=${delivery.latitude},${delivery.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                {delivery.latitude.toFixed(5)}, {delivery.longitude.toFixed(5)} (view on map)
+              </a>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

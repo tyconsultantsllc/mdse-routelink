@@ -226,6 +226,8 @@ export default function DriverTrackingPage() {
         pharmacyId: selectedStop.pharmacyId,
         driverId,
         reason,
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
       })
 
       setRoutes((prev) =>
@@ -341,6 +343,8 @@ export default function DriverTrackingPage() {
         notes: data.notes,
         signatureDataUrl: data.signature,
         photos: data.photos,
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
       })
 
       setRoutes((prev) =>
