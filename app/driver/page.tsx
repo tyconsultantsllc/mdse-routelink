@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings } from 'lucide-react'
+import { useState, useEffect, useMemo } from "react"
+import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client"
 import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, updateDriverLocation, failDeliveryStop } from "@/lib/driver-actions"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { DriverSettingsDialog } from "@/components/driver-settings-dialog"
+import { ReturnToPharmacyDialog } from "@/components/return-to-pharmacy-dialog"
 import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
@@ -38,8 +39,9 @@ interface RouteStop {
   estimatedTime: number
   arrival?: string
   departure?: string
-  status: "completed" | "pending" | "in-progress" | "failed"
+  status: "completed" | "pending" | "in-progress" | "failed" | "returned"
   failureReason?: string
+  pharmacyReturnAddress?: string | null
 }
 
 interface Route {
@@ -70,6 +72,7 @@ export default function DriverTrackingPage() {
   const [driverId, setDriverId] = useState<string | null>(null)
   const [driverEmail, setDriverEmail] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [returnsDialogOpen, setReturnsDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchDriverRoutes()
@@ -179,7 +182,7 @@ export default function DriverTrackingPage() {
               pickupLng: stop.pharmacies?.longitude ?? null,
               dropoffAddress: stop.dropoff_address || "N/A",
               estimatedTime: stop.estimated_time || 30,
-              // DB uses pending/picked_up/delivered/failed; UI uses pending/in-progress/completed/failed
+              // DB uses pending/picked_up/delivered/failed/returned; UI uses pending/in-progress/completed/failed/returned
               status:
                 stop.status === "delivered"
                   ? "completed"
@@ -187,8 +190,11 @@ export default function DriverTrackingPage() {
                     ? "in-progress"
                     : stop.status === "failed"
                       ? "failed"
-                      : "pending",
+                      : stop.status === "returned"
+                        ? "returned"
+                        : "pending",
               failureReason: stop.status === "failed" ? stop.notes : undefined,
+              pharmacyReturnAddress: stop.pharmacies?.address || null,
             })) || [],
         })) || []
       )
@@ -495,6 +501,43 @@ export default function DriverTrackingPage() {
   const activeRoute = routes.find((r) => r.status === "in-progress")
   const nextStop = activeRoute?.stops.find((s) => s.status === "in-progress" || s.status === "pending")
 
+  const pendingReturnGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        pharmacyId: string
+        pharmacyName: string
+        pharmacyAddress: string | null
+        stops: { stopId: number; routeId: number; dropoffAddress: string; failureReason?: string }[]
+      }
+    >()
+
+    routes.forEach((route) => {
+      route.stops.forEach((stop) => {
+        if (stop.status !== "failed") return
+        const existing = groups.get(stop.pharmacyId)
+        const entry = {
+          stopId: stop.id,
+          routeId: route.id,
+          dropoffAddress: stop.dropoffAddress,
+          failureReason: stop.failureReason,
+        }
+        if (existing) {
+          existing.stops.push(entry)
+        } else {
+          groups.set(stop.pharmacyId, {
+            pharmacyId: stop.pharmacyId,
+            pharmacyName: stop.pharmacyName,
+            pharmacyAddress: stop.pharmacyReturnAddress ?? null,
+            stops: [entry],
+          })
+        }
+      })
+    })
+
+    return Array.from(groups.values())
+  }, [routes])
+
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       {/* Header */}
@@ -514,6 +557,26 @@ export default function DriverTrackingPage() {
                 />
                 <span className="text-xs md:text-sm font-medium">{isTracking ? "Active" : "Paused"}</span>
               </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setReturnsDialogOpen(true)}
+                      className="h-9 w-9 md:h-10 md:w-10 relative"
+                    >
+                      <PackageX className="h-4 w-4 md:h-5 md:w-5" />
+                      {pendingReturnGroups.length > 0 && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-[10px] leading-4 text-white text-center">
+                          {pendingReturnGroups.reduce((sum, g) => sum + g.stops.length, 0)}
+                        </span>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Pending Returns</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -858,6 +921,14 @@ export default function DriverTrackingPage() {
         onOpenChange={setSettingsOpen}
         driverId={driverId || ""}
         driverEmail={driverEmail}
+      />
+      <ReturnToPharmacyDialog
+        open={returnsDialogOpen}
+        onOpenChange={setReturnsDialogOpen}
+        groups={pendingReturnGroups}
+        driverId={driverId || ""}
+        currentLocation={currentLocation}
+        onConfirmed={fetchDriverRoutes}
       />
     </div>
   )

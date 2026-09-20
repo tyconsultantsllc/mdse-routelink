@@ -238,6 +238,20 @@ export async function adminUpdateUserEmail(userId: string, newEmail: string) {
   await supabase.from('users').update({ email: newEmail }).eq('id', userId)
 }
 
+export async function getPharmacyReturnSignatureMode(pharmacyId: string): Promise<'batch' | 'per_item'> {
+  await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('pharmacies')
+    .select('return_signature_mode')
+    .eq('id', pharmacyId)
+    .single()
+
+  if (error) throw error
+  return data?.return_signature_mode || 'batch'
+}
+
 export async function updateOwnPharmacyReturnSignatureMode(mode: 'batch' | 'per_item') {
   const { userId, role } = await verifyAuth()
 

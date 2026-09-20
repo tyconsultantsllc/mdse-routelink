@@ -147,6 +147,84 @@ export async function failDeliveryStop(params: {
   if (logError) console.error("Delivery log insert failed:", logError.message)
 }
 
+interface ConfirmReturnParams {
+  stops: Array<{ stopId: number; routeId: number; pharmacyId: string }>
+  driverId: string
+  confirmedBy: string
+  signatureDataUrl: string
+  latitude?: number | null
+  longitude?: number | null
+}
+
+/**
+ * Confirms that failed-delivery items have been physically returned to the
+ * pharmacy and signed for. Called once with multiple stops for a pharmacy
+ * using "batch" mode (one signature covers all of them), or once per stop
+ * for a pharmacy using "per_item" mode - the underlying operation is the
+ * same either way, just with a different-sized stops array.
+ */
+export async function confirmReturnToPharmacy(params: ConfirmReturnParams) {
+  if (params.stops.length === 0) throw new Error("No stops to return")
+
+  const supabase = createClient()
+
+  // One upload serves every stop in this call, whether that's a single
+  // per-item return or an entire batch signing off together.
+  const signaturePath = await uploadSignature(
+    params.driverId,
+    params.stops[0].stopId,
+    params.signatureDataUrl,
+  )
+
+  const confirmedAt = new Date().toISOString()
+
+  const stopUpdates = await Promise.all(
+    params.stops.map(async (stop) => {
+      const { data, error } = await supabase
+        .from("route_stops")
+        .update({
+          status: "returned",
+          return_confirmed_by: params.confirmedBy,
+          return_signature_path: signaturePath,
+          return_confirmed_at: confirmedAt,
+        })
+        .eq("id", stop.stopId)
+        .select()
+
+      return { stop, error, matched: (data?.length ?? 0) > 0 }
+    }),
+  )
+
+  const failures = stopUpdates.filter((r) => r.error || !r.matched)
+  if (failures.length > 0) {
+    throw new Error(
+      `Could not confirm return for ${failures.length} of ${params.stops.length} item(s): ` +
+        failures.map((f) => f.error?.message || "no matching stop found").join("; "),
+    )
+  }
+
+  const logResults = await Promise.all(
+    params.stops.map((stop) =>
+      supabase.from("delivery_logs").insert({
+        route_id: stop.routeId,
+        route_stop_id: stop.stopId,
+        driver_id: params.driverId,
+        pharmacy_id: stop.pharmacyId,
+        action: "returned",
+        notes: `Returned to pharmacy, received by ${params.confirmedBy}`,
+        latitude: params.latitude ?? null,
+        longitude: params.longitude ?? null,
+      }),
+    ),
+  )
+
+  logResults.forEach((r) => {
+    if (r.error) console.error("Return delivery log insert failed:", r.error.message)
+  })
+
+  return { signaturePath, confirmedCount: params.stops.length }
+}
+
 export async function completeRoute(routeId: number) {
   const supabase = createClient()
 
