@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail, PackageCheck } from 'lucide-react'
+import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail, PackageCheck, Route as RouteIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
+import { RequestRouteDialog } from "@/components/request-route-dialog"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
@@ -45,6 +46,7 @@ export default function PharmacyDashboard() {
   const [loading, setLoading] = useState(true)
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
   const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
+  const [requestRouteOpen, setRequestRouteOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [myReports, setMyReports] = useState<any[]>([])
 
@@ -349,6 +351,11 @@ export default function PharmacyDashboard() {
         <AnnouncementBanner />
 
         <div className="p-3 md:p-6 space-y-4 md:space-y-6">
+          <Button onClick={() => setRequestRouteOpen(true)} className="w-full md:w-auto" size="lg">
+            <RouteIcon className="h-4 w-4 mr-2" />
+            Request a Route
+          </Button>
+
           {/* Stats - Mobile optimized grid */}
           <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
             <Card>
@@ -525,6 +532,11 @@ export default function PharmacyDashboard() {
       )}
       <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={userEmail} />
       <PharmacyDeliverySettings open={deliverySettingsOpen} onOpenChange={setDeliverySettingsOpen} />
+      <RequestRouteDialog
+        open={requestRouteOpen}
+        onOpenChange={setRequestRouteOpen}
+        onSubmitted={fetchPharmacyDeliveries}
+      />
     </TooltipProvider>
   )
 }

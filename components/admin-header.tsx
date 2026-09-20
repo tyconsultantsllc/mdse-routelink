@@ -62,6 +62,27 @@ export function AdminHeader({ title, children }: AdminHeaderProps) {
         })
       }
 
+      const { data: emergencyRequests } = await supabase
+        .from("route_requests")
+        .select("id, created_at, pharmacies(name)")
+        .eq("status", "pending")
+        .eq("is_emergency", true)
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      for (const r of emergencyRequests || []) {
+        const id = `route-request-${r.id}`
+        if (dismissedIdsRef.current.has(id)) continue
+        notifs.push({
+          id,
+          type: "error",
+          title: `Emergency Route Request - ${(r as any).pharmacies?.name || "Unknown Pharmacy"}`,
+          message: "An emergency delivery request is waiting for a driver.",
+          timestamp: new Date(r.created_at),
+          read: readIdsRef.current.has(id),
+        })
+      }
+
       const { data: readRows } = await supabase
         .from("admin_message_reads")
         .select("conversation_id, last_read_at")

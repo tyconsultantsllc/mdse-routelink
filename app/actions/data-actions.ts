@@ -467,6 +467,8 @@ export async function createRoute(routeData: {
     pickupAddress: string
     dropoffAddress: string
     sequence: number
+    dropoffLatitude?: number | null
+    dropoffLongitude?: number | null
   }>
 }) {
   const { role } = await verifyAuth()
@@ -516,6 +518,8 @@ export async function createRoute(routeData: {
     pharmacy_id: stop.pharmacyId,
     pickup_address: stop.pickupAddress,
     dropoff_address: stop.dropoffAddress,
+    dropoff_latitude: stop.dropoffLatitude ?? null,
+    dropoff_longitude: stop.dropoffLongitude ?? null,
     stop_order: stop.sequence,
     status: 'pending',
   }))
@@ -817,6 +821,146 @@ export async function broadcastMessageToAllDrivers(content: string) {
   if (insertError) throw insertError
 
   return { sentTo: messagesToInsert.length }
+}
+
+export async function createRouteRequest(input: {
+  stops: Array<{ address: string; lat?: number | null; lng?: number | null }>
+  isEmergency: boolean
+  sourceLink?: string | null
+}) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  if (input.stops.length === 0) {
+    throw new Error('At least one delivery address is required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const { data, error } = await supabase
+    .from('route_requests')
+    .insert({
+      pharmacy_id: pharmacyUser.pharmacy_id,
+      requested_by: userId,
+      source_link: input.sourceLink || null,
+      stops: input.stops,
+      is_emergency: input.isEmergency,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getRouteRequests() {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('route_requests')
+    .select('*, pharmacies(name, address, region)')
+    .eq('status', 'pending')
+    .order('is_emergency', { ascending: false })
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function dismissRouteRequest(requestId: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('route_requests')
+    .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+    .eq('id', requestId)
+
+  if (error) throw error
+  return { success: true }
+}
+
+/**
+ * Turns a pending request into a real route and assigns a driver in one
+ * step - reuses createRoute/assignDriverToRoute rather than duplicating
+ * their logic, since this is exactly what those already do.
+ */
+export async function assignRouteRequestToDriver(input: {
+  requestId: string
+  driverId: string
+  routeName: string
+  priority: string
+  startTime?: string
+  endTime?: string
+}) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: request, error: requestError } = await supabase
+    .from('route_requests')
+    .select('*, pharmacies(address)')
+    .eq('id', input.requestId)
+    .single()
+
+  if (requestError) throw requestError
+  if (request.status !== 'pending') throw new Error('This request has already been resolved')
+
+  const pharmacyAddress = (request as any).pharmacies?.address || ''
+  const stops = (request.stops as Array<{ address: string; lat?: number | null; lng?: number | null }>).map(
+    (s, index) => ({
+      pharmacyId: request.pharmacy_id,
+      pickupAddress: pharmacyAddress,
+      dropoffAddress: s.address,
+      dropoffLatitude: s.lat ?? null,
+      dropoffLongitude: s.lng ?? null,
+      sequence: index + 1,
+    }),
+  )
+
+  const route = await createRoute({
+    name: input.routeName,
+    priority: input.priority,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    stops,
+  })
+
+  await assignDriverToRoute(route.id, input.driverId)
+
+  const { error: updateError } = await supabase
+    .from('route_requests')
+    .update({ status: 'assigned', route_id: route.id, resolved_at: new Date().toISOString() })
+    .eq('id', input.requestId)
+
+  if (updateError) throw updateError
+
+  return route
 }
 
 export async function getPharmacyReports() {

@@ -20,6 +20,7 @@ import {
   Megaphone,
   MessageSquare,
   AlertCircle,
+  Route,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -37,6 +38,7 @@ const navigation = [
   { name: "Calendar", href: "/admin/calendar", icon: CalendarIcon },
   { name: "Messages", href: "/admin/messages", icon: MessageSquare },
   { name: "Pharmacy Reports", href: "/admin/pharmacy-reports", icon: AlertCircle },
+  { name: "Route Requests", href: "/admin/route-requests", icon: Route },
   { name: "Delivery Logs", href: "/admin/logs", icon: Clock },
   { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
   { name: "Reports", href: "/admin/reports", icon: BarChart2 },
@@ -50,6 +52,7 @@ export function AdminSidebar() {
   const { toast } = useToast()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [openReportsCount, setOpenReportsCount] = useState(0)
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
   const [adminName, setAdminName] = useState("Admin User")
 
   useEffect(() => {
@@ -101,6 +104,20 @@ export function AdminSidebar() {
     }
     checkReports()
     const interval = setInterval(checkReports, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const checkRouteRequests = async () => {
+      const supabase = createClient()
+      const { count } = await supabase
+        .from("route_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending")
+      setPendingRequestsCount(count || 0)
+    }
+    checkRouteRequests()
+    const interval = setInterval(checkRouteRequests, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -163,6 +180,11 @@ export function AdminSidebar() {
                           {item.name === "Pharmacy Reports" && openReportsCount > 0 && (
                             <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center">
                               {openReportsCount > 9 ? "9+" : openReportsCount}
+                            </span>
+                          )}
+                          {item.name === "Route Requests" && pendingRequestsCount > 0 && (
+                            <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center">
+                              {pendingRequestsCount > 9 ? "9+" : pendingRequestsCount}
                             </span>
                           )}
                         </Link>
