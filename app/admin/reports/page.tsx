@@ -140,7 +140,7 @@ export default function Reports() {
       <div className="flex h-screen overflow-hidden bg-background">
         <AdminSidebar />
 
-        <div className="flex flex-col flex-1 overflow-hidden pt-16 md:pt-0">
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
           <AdminHeader title="Analytics Reports">
             <Select defaultValue="all">
               <SelectTrigger className="w-[180px]">

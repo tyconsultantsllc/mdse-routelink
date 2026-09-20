@@ -143,7 +143,7 @@ export default function DeliveryLogs() {
       <div className="flex h-screen overflow-hidden bg-background">
         <AdminSidebar />
 
-        <div className="flex flex-col flex-1 overflow-hidden pt-16 md:pt-0">
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
           <AdminHeader title="Delivery Logs" />
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6">

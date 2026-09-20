@@ -197,7 +197,7 @@ export default function RouteManagement() {
       <div className="flex h-screen overflow-hidden bg-background">
         <AdminSidebar />
 
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <AdminHeader title="Route Management" />
 
           <div className="flex-1 overflow-y-auto p-6">
