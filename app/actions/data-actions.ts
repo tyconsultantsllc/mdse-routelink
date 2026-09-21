@@ -455,6 +455,77 @@ export async function getDashboardStats() {
   }
 }
 
+interface RouteInsertData {
+  name: string
+  startDate?: string
+  startTime?: string
+  endTime?: string
+  estimatedDuration?: number
+  priority: string
+  driverId?: string | null
+  seriesId?: string | null
+  stops: Array<{
+    pharmacyId: string
+    pickupAddress: string
+    dropoffAddress: string
+    sequence: number
+    dropoffLatitude?: number | null
+    dropoffLongitude?: number | null
+  }>
+}
+
+/**
+ * Inserts one route and its stops. Shared by createRoute (a single route)
+ * and the series generator (called once per matching date) so both paths
+ * stay identical rather than drifting apart over time.
+ */
+async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClient>, routeData: RouteInsertData) {
+  const buildTimestamp = (timeStr?: string) => {
+    if (!timeStr) return null
+    const baseDate = routeData.startDate ? new Date(`${routeData.startDate}T00:00:00`) : new Date()
+    const [hours, minutes] = timeStr.split(':')
+    baseDate.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    return baseDate.toISOString()
+  }
+
+  const startTimeTimestamp = buildTimestamp(routeData.startTime)
+  const endTimeTimestamp = buildTimestamp(routeData.endTime)
+
+  const { data: route, error: routeError } = await supabase
+    .from('routes')
+    .insert({
+      name: routeData.name,
+      start_time: startTimeTimestamp,
+      end_time: endTimeTimestamp,
+      estimated_duration: routeData.estimatedDuration || null,
+      priority: routeData.priority,
+      driver_id: routeData.driverId || null,
+      series_id: routeData.seriesId || null,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+
+  if (routeError) throw routeError
+
+  const stopsToInsert = routeData.stops.map(stop => ({
+    route_id: route.id,
+    pharmacy_id: stop.pharmacyId,
+    pickup_address: stop.pickupAddress,
+    dropoff_address: stop.dropoffAddress,
+    dropoff_latitude: stop.dropoffLatitude ?? null,
+    dropoff_longitude: stop.dropoffLongitude ?? null,
+    stop_order: stop.sequence,
+    status: 'pending',
+  }))
+
+  const { error: stopsError } = await supabase.from('route_stops').insert(stopsToInsert)
+  if (stopsError) throw stopsError
+
+  return route
+}
+
 export async function createRoute(routeData: {
   name: string
   startDate?: string
@@ -483,56 +554,95 @@ export async function createRoute(routeData: {
   // callers that don't pass one - previously this ALWAYS used today
   // regardless of what date was intended, which silently broke scheduling
   // a route for any date other than today (the whole point of the calendar).
-  const buildTimestamp = (timeStr?: string) => {
-    if (!timeStr) return null
-    const baseDate = routeData.startDate ? new Date(`${routeData.startDate}T00:00:00`) : new Date()
-    const [hours, minutes] = timeStr.split(':')
-    baseDate.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    return baseDate.toISOString()
+  return insertRouteWithStops(supabase, routeData)
+}
+
+/**
+ * Creates a recurring route series and generates one real route occurrence
+ * for every date in [seriesStartDate, seriesEndDate] whose day of week is
+ * in daysOfWeek. Each occurrence is a fully independent route with its own
+ * stops - editing or working one never touches the others.
+ */
+export async function createRouteSeries(input: {
+  name: string
+  driverId?: string | null
+  priority: string
+  startTime?: string
+  endTime?: string
+  estimatedDuration?: number
+  daysOfWeek: number[]
+  seriesStartDate: string
+  seriesEndDate: string
+  stops: Array<{
+    pharmacyId: string
+    pickupAddress: string
+    dropoffAddress: string
+    sequence: number
+    dropoffLatitude?: number | null
+    dropoffLongitude?: number | null
+  }>
+}) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
   }
 
-  const startTimeTimestamp = buildTimestamp(routeData.startTime)
-  const endTimeTimestamp = buildTimestamp(routeData.endTime)
-  
-  // Insert the route
-  const { data: route, error: routeError } = await supabase
-    .from('routes')
+  if (input.daysOfWeek.length === 0) throw new Error('Select at least one day of the week')
+
+  const start = new Date(`${input.seriesStartDate}T00:00:00`)
+  const end = new Date(`${input.seriesEndDate}T00:00:00`)
+  if (end < start) throw new Error('End date must be on or after the start date')
+
+  const supabase = createAdminClient()
+
+  const { data: series, error: seriesError } = await supabase
+    .from('route_series')
     .insert({
-      name: routeData.name,
-      start_time: startTimeTimestamp,
-      end_time: endTimeTimestamp,
-      estimated_duration: routeData.estimatedDuration || null,
-      priority: routeData.priority,
-      status: 'pending',
-      created_at: new Date().toISOString(),
+      name: input.name,
+      driver_id: input.driverId || null,
+      priority: input.priority,
+      start_time_of_day: input.startTime || null,
+      end_time_of_day: input.endTime || null,
+      estimated_duration: input.estimatedDuration || null,
+      days_of_week: input.daysOfWeek,
+      series_start_date: input.seriesStartDate,
+      series_end_date: input.seriesEndDate,
+      stops_template: input.stops,
     })
     .select()
     .single()
 
-  if (routeError) {
-    throw routeError
+  if (seriesError) throw seriesError
+
+  const occurrenceDates: string[] = []
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (input.daysOfWeek.includes(d.getDay())) {
+      occurrenceDates.push(d.toISOString().split('T')[0])
+    }
   }
 
-  const stopsToInsert = routeData.stops.map(stop => ({
-    route_id: route.id,
-    pharmacy_id: stop.pharmacyId,
-    pickup_address: stop.pickupAddress,
-    dropoff_address: stop.dropoffAddress,
-    dropoff_latitude: stop.dropoffLatitude ?? null,
-    dropoff_longitude: stop.dropoffLongitude ?? null,
-    stop_order: stop.sequence,
-    status: 'pending',
-  }))
-
-  const { error: stopsError } = await supabase
-    .from('route_stops')
-    .insert(stopsToInsert)
-
-  if (stopsError) {
-    throw stopsError
+  if (occurrenceDates.length === 0) {
+    throw new Error('No dates in that range match the selected days of the week')
   }
 
-  return route
+  const routes = []
+  for (const date of occurrenceDates) {
+    const route = await insertRouteWithStops(supabase, {
+      name: input.name,
+      startDate: date,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      estimatedDuration: input.estimatedDuration,
+      priority: input.priority,
+      driverId: input.driverId,
+      seriesId: series.id,
+      stops: input.stops,
+    })
+    routes.push(route)
+  }
+
+  return { series, routes }
 }
 
 export async function assignDriverToRoute(routeId: number, driverId: string) {
@@ -548,6 +658,9 @@ export async function assignDriverToRoute(routeId: number, driverId: string) {
     .from('routes')
     .update({
       driver_id: driverId,
+      driver_confirmation: 'pending',
+      declined_reason: null,
+      confirmation_resolved_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', routeId)
@@ -750,6 +863,155 @@ export async function updateRoute(routeId: number, routeData: {
   }
 
   return { success: true }
+}
+
+/**
+ * Series-aware wrapper around updateRoute. 'this' just delegates straight
+ * through. 'following' also updates the series template (so future
+ * regenerations match) and propagates the same changes to every other
+ * still-pending occurrence in the series dated on or after this one -
+ * in-progress or completed occurrences are left alone entirely, not just
+ * their stops, since retroactively changing a route that's already done
+ * doesn't make sense.
+ */
+export async function updateRouteOccurrence(
+  routeId: number,
+  routeData: {
+    name: string
+    startTime?: string
+    endTime?: string
+    estimatedDuration?: number
+    priority: string
+    status: string
+    driverId?: string | null
+    stops: Array<{
+      id?: string
+      pharmacyId: string
+      pickupAddress: string
+      dropoffAddress: string
+      stopOrder: number
+    }>
+  },
+  scope: 'this' | 'following',
+) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  await updateRoute(routeId, routeData)
+
+  if (routeData.driverId !== undefined) {
+    const supabase = createAdminClient()
+    await supabase
+      .from('routes')
+      .update({ driver_id: routeData.driverId, driver_confirmation: 'pending', confirmation_resolved_at: null })
+      .eq('id', routeId)
+  }
+
+  if (scope === 'this') {
+    return { success: true, occurrencesUpdated: 1 }
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: thisRoute, error: thisRouteError } = await supabase
+    .from('routes')
+    .select('series_id, start_time')
+    .eq('id', routeId)
+    .single()
+
+  if (thisRouteError) throw thisRouteError
+  if (!thisRoute?.series_id) {
+    // Not part of a series - 'following' is meaningless, already handled above.
+    return { success: true, occurrencesUpdated: 1 }
+  }
+
+  // Keep the series template in sync so any future manual regeneration
+  // matches what was just edited.
+  await supabase
+    .from('route_series')
+    .update({
+      name: routeData.name,
+      priority: routeData.priority,
+      start_time_of_day: routeData.startTime || null,
+      end_time_of_day: routeData.endTime || null,
+      estimated_duration: routeData.estimatedDuration || null,
+      driver_id: routeData.driverId !== undefined ? routeData.driverId : undefined,
+      stops_template: routeData.stops.map((s, i) => ({
+        pharmacyId: s.pharmacyId,
+        pickupAddress: s.pickupAddress,
+        dropoffAddress: s.dropoffAddress,
+        sequence: i + 1,
+      })),
+    })
+    .eq('id', thisRoute.series_id)
+
+  const { data: futureOccurrences, error: futureError } = await supabase
+    .from('routes')
+    .select('id')
+    .eq('series_id', thisRoute.series_id)
+    .eq('status', 'pending')
+    .gte('start_time', thisRoute.start_time)
+    .neq('id', routeId)
+
+  if (futureError) throw futureError
+
+  let updatedCount = 1
+  for (const occurrence of futureOccurrences || []) {
+    // Each occurrence keeps its own stop ids, so stops are replaced wholesale
+    // here rather than trying to map ids across different occurrences.
+    const { data: existingStops } = await supabase
+      .from('route_stops')
+      .select('id, status')
+      .eq('route_id', occurrence.id)
+
+    const stillPending = (existingStops || []).every((s) => s.status === 'pending')
+    if (!stillPending) continue // a stop was already worked on somehow - leave this occurrence alone
+
+    await supabase.from('route_stops').delete().eq('route_id', occurrence.id).eq('status', 'pending')
+
+    const newStops = routeData.stops.map((s, i) => ({
+      route_id: occurrence.id,
+      pharmacy_id: s.pharmacyId,
+      pickup_address: s.pickupAddress,
+      dropoff_address: s.dropoffAddress,
+      stop_order: i + 1,
+      status: 'pending',
+    }))
+    await supabase.from('route_stops').insert(newStops)
+
+    const updatePayload: Record<string, any> = {
+      name: routeData.name,
+      priority: routeData.priority,
+      estimated_duration: routeData.estimatedDuration || null,
+      updated_at: new Date().toISOString(),
+    }
+    if (routeData.driverId !== undefined) {
+      updatePayload.driver_id = routeData.driverId
+      updatePayload.driver_confirmation = 'pending'
+      updatePayload.confirmation_resolved_at = null
+    }
+    // Re-derive each occurrence's own date, only changing the time-of-day
+    if (routeData.startTime || routeData.endTime) {
+      const { data: occRoute } = await supabase.from('routes').select('start_time').eq('id', occurrence.id).single()
+      const baseDate = occRoute?.start_time ? new Date(occRoute.start_time) : new Date()
+      const applyTime = (timeStr?: string) => {
+        if (!timeStr) return null
+        const d = new Date(baseDate)
+        const [h, m] = timeStr.split(':')
+        d.setHours(parseInt(h), parseInt(m), 0, 0)
+        return d.toISOString()
+      }
+      if (routeData.startTime) updatePayload.start_time = applyTime(routeData.startTime)
+      if (routeData.endTime) updatePayload.end_time = applyTime(routeData.endTime)
+    }
+
+    await supabase.from('routes').update(updatePayload).eq('id', occurrence.id)
+    updatedCount++
+  }
+
+  return { success: true, occurrencesUpdated: updatedCount }
 }
 
 export async function broadcastMessageToAllDrivers(content: string) {

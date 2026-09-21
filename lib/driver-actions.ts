@@ -239,6 +239,30 @@ export async function completeRoute(routeId: number) {
   if (error) throw new Error(`Could not complete route: ${error.message}`)
 }
 
+export async function confirmRouteAssignment(routeId: number) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from("routes")
+    .update({ driver_confirmation: "confirmed", confirmation_resolved_at: new Date().toISOString() })
+    .eq("id", routeId)
+
+  if (error) throw error
+}
+
+export async function declineRouteAssignment(routeId: number, reason: string) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from("routes")
+    .update({
+      driver_confirmation: "declined",
+      declined_reason: reason || null,
+      confirmation_resolved_at: new Date().toISOString(),
+    })
+    .eq("id", routeId)
+
+  if (error) throw error
+}
+
 export async function updateDriverLocation(driverId: string, latitude: number, longitude: number) {
   const supabase = createClient()
 
