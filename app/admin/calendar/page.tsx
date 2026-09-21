@@ -13,16 +13,20 @@ import { getRoutes, getUsers } from "@/app/actions/data-actions"
 import { RegionBadge } from "@/components/region-badge"
 import { getRouteRegion, type Region } from "@/lib/region-utils"
 import { useToast } from "@/components/ui/use-toast"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { WeeklyDriverSchedule } from "@/components/weekly-driver-schedule"
 
 interface ScheduledRoute {
   id: number
   name: string
   driver: string
+  driverId: string | null
   driverAvatar: string
   startTime: string
   endTime: string
   priority: "low" | "medium" | "high" | "urgent"
   region: Region | null
+  driverConfirmation: "pending" | "confirmed" | "declined"
   stops: number
   stopDetails: { pharmacyId: string; pharmacyName: string; pickupAddress: string; dropoffAddress: string }[]
   status: "scheduled" | "in-progress" | "completed"
@@ -51,6 +55,7 @@ export default function CalendarView() {
   const [copyFromRoute, setCopyFromRoute] = useState<ScheduledRoute | null>(null)
   const [scheduledRoutes, setScheduledRoutes] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<"month" | "week">("month")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -74,11 +79,13 @@ export default function CalendarView() {
             id: route.id,
             name: route.name || 'Unnamed Route',
             driver: driver ? `${driver.first_name} ${driver.last_name}` : 'Unassigned',
+            driverId: route.driver_id || null,
             driverAvatar: driver ? `https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}` : '',
             startTime: new Date(route.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             endTime: route.end_time ? new Date(route.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
             priority: route.priority || 'medium',
             region: getRouteRegion(route.route_stops || []),
+            driverConfirmation: route.driver_confirmation || "pending",
             stops: route.route_stops?.length || 0,
             stopDetails: (route.route_stops || [])
               .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
@@ -156,6 +163,28 @@ export default function CalendarView() {
     }
   }
 
+  const getConfirmationColor = (confirmation: string) => {
+    switch (confirmation) {
+      case "confirmed":
+        return "bg-green-100 text-green-800"
+      case "declined":
+        return "bg-red-100 text-red-800"
+      default:
+        return "bg-amber-100 text-amber-800"
+    }
+  }
+
+  const getConfirmationDotColor = (confirmation: string) => {
+    switch (confirmation) {
+      case "confirmed":
+        return "bg-green-500"
+      case "declined":
+        return "bg-red-500"
+      default:
+        return "bg-amber-500"
+    }
+  }
+
   const previousMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))
   }
@@ -184,15 +213,25 @@ export default function CalendarView() {
               <p className="text-sm text-muted-foreground mt-1">Schedule and manage delivery routes</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={previousMonth}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
-                Today
-              </Button>
-              <Button variant="outline" size="icon" onClick={nextMonth}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "month" | "week")}>
+                <TabsList>
+                  <TabsTrigger value="month">Month</TabsTrigger>
+                  <TabsTrigger value="week">Week by Driver</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {viewMode === "month" && (
+                <>
+                  <Button variant="outline" size="icon" onClick={previousMonth}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
+                    Today
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={nextMonth}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
               <Button onClick={() => setAddRouteModalOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Schedule Route
@@ -200,6 +239,15 @@ export default function CalendarView() {
             </div>
           </div>
 
+          {viewMode === "week" ? (
+            <WeeklyDriverSchedule
+              scheduledRoutes={scheduledRoutes}
+              onSelectRoute={(route) => {
+                setSelectedDate(new Date(`${Object.keys(scheduledRoutes).find(k => scheduledRoutes[k].some((r: any) => r.id === route.id))}T00:00:00`))
+              }}
+            />
+          ) : (
+            <>
           {/* Legend */}
           <Card className="p-4 mb-6">
             <div className="flex flex-wrap items-center gap-4">
@@ -268,9 +316,12 @@ export default function CalendarView() {
                           {routes.slice(0, 2).map((route) => (
                             <div
                               key={route.id}
-                              className={`text-xs p-1.5 rounded border ${getPriorityColor(route.priority)}`}
+                              className={`text-xs p-1.5 rounded border relative ${getPriorityColor(route.priority)}`}
                             >
-                              <div className="font-medium truncate">{route.name}</div>
+                              <span
+                                className={`absolute top-1 right-1 h-1.5 w-1.5 rounded-full ${getConfirmationDotColor(route.driverConfirmation)}`}
+                              />
+                              <div className="font-medium truncate pr-2">{route.name}</div>
                               <div className="flex items-center gap-1 mt-0.5">
                                 <Avatar className="h-3 w-3">
                                   <AvatarImage src={route.driverAvatar || "/placeholder.svg"} />
@@ -332,6 +383,9 @@ export default function CalendarView() {
                           {route.priority.charAt(0).toUpperCase() + route.priority.slice(1)}
                         </Badge>
                         <RegionBadge region={route.region} />
+                        <Badge className={getConfirmationColor(route.driverConfirmation)}>
+                          {route.driverConfirmation.charAt(0).toUpperCase() + route.driverConfirmation.slice(1)}
+                        </Badge>
                         <Badge className={getStatusColor(route.status)}>
                           {route.status === "in-progress"
                             ? "In Progress"
@@ -362,6 +416,8 @@ export default function CalendarView() {
                 </div>
               )}
             </Card>
+          )}
+            </>
           )}
         </div>
       </div>
