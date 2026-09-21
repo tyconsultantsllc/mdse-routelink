@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
@@ -56,10 +57,16 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   const [isLoadingPharmacies, setIsLoadingPharmacies] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [optimizedDurationMinutes, setOptimizedDurationMinutes] = useState<number | null>(null)
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([])
+  const [seriesEndDate, setSeriesEndDate] = useState("")
+  const [seriesDriverId, setSeriesDriverId] = useState("")
+  const [drivers, setDrivers] = useState<Array<{ id: string; name: string }>>([])
 
   useEffect(() => {
     if (open) {
       loadPharmacies()
+      loadDrivers()
       if (copyFrom) {
         setRouteName(`${copyFrom.name} (Copy)`)
         setPriority(copyFrom.priority)
@@ -67,6 +74,20 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       }
     }
   }, [open, copyFrom])
+
+  const loadDrivers = async () => {
+    try {
+      const { getUsers } = await import('@/app/actions/data-actions')
+      const users = await getUsers()
+      setDrivers(
+        users
+          .filter((u: any) => u.role === 'driver')
+          .map((u: any) => ({ id: u.id, name: `${u.first_name || ''} ${u.last_name || ''}`.trim() })),
+      )
+    } catch (error) {
+      console.error('Error loading drivers:', error)
+    }
+  }
 
   const loadPharmacies = async () => {
     setIsLoadingPharmacies(true)
@@ -125,33 +146,63 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       return
     }
 
+    if (isRecurring && daysOfWeek.length === 0) {
+      toast({ title: "Select at least one day", description: "Choose which days this route repeats on.", variant: "destructive" })
+      return
+    }
+
+    if (isRecurring && !seriesEndDate) {
+      toast({ title: "End date required", description: "Recurring routes need an end date.", variant: "destructive" })
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const { createRoute } = await import('@/app/actions/data-actions')
-
       const startDate = initialDate
         ? `${initialDate.getFullYear()}-${String(initialDate.getMonth() + 1).padStart(2, '0')}-${String(initialDate.getDate()).padStart(2, '0')}`
         : undefined
 
-      await createRoute({
-        name: routeName,
-        startDate,
-        startTime: startTime || undefined,
-        endTime: endTime || undefined,
-        estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
-        priority,
-        stops: stops.map((stop, index) => ({
-          pharmacyId: stop.pharmacyId,
-          pickupAddress: stop.pickupAddress,
-          dropoffAddress: stop.dropoffAddress,
-          sequence: index + 1,
-        })),
-      })
+      const formattedStops = stops.map((stop, index) => ({
+        pharmacyId: stop.pharmacyId,
+        pickupAddress: stop.pickupAddress,
+        dropoffAddress: stop.dropoffAddress,
+        sequence: index + 1,
+      }))
 
-      toast({
-        title: "Route Created",
-        description: `${routeName} has been created successfully`,
-      })
+      if (isRecurring) {
+        const { createRouteSeries } = await import('@/app/actions/data-actions')
+        const result = await createRouteSeries({
+          name: routeName,
+          driverId: seriesDriverId || null,
+          priority,
+          startTime: startTime || undefined,
+          endTime: endTime || undefined,
+          estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
+          daysOfWeek,
+          seriesStartDate: startDate || new Date().toISOString().split('T')[0],
+          seriesEndDate: seriesEndDate,
+          stops: formattedStops,
+        })
+        toast({
+          title: "Recurring Route Created",
+          description: `${routeName} was created for ${result.routes.length} date${result.routes.length !== 1 ? "s" : ""}.`,
+        })
+      } else {
+        const { createRoute } = await import('@/app/actions/data-actions')
+        await createRoute({
+          name: routeName,
+          startDate,
+          startTime: startTime || undefined,
+          endTime: endTime || undefined,
+          estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
+          priority,
+          stops: formattedStops,
+        })
+        toast({
+          title: "Route Created",
+          description: `${routeName} has been created successfully`,
+        })
+      }
       
       // Reset form
       setRouteName("")
@@ -159,6 +210,10 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       setEndTime("")
       setOptimizedDurationMinutes(null)
       setPriority("medium")
+      setIsRecurring(false)
+      setDaysOfWeek([])
+      setSeriesEndDate("")
+      setSeriesDriverId("")
       setStops([{
         pharmacyId: "",
         pharmacyName: "",
@@ -390,6 +445,72 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                 onChange={(e) => setEndTime(e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox id="isRecurring" checked={isRecurring} onCheckedChange={(c) => setIsRecurring(!!c)} />
+              <Label htmlFor="isRecurring" className="font-medium cursor-pointer">
+                Repeat this route on multiple days
+              </Label>
+            </div>
+
+            {isRecurring && (
+              <div className="space-y-3 pt-1">
+                <div>
+                  <Label>Repeat On *</Label>
+                  <div className="flex gap-1 flex-wrap mt-1">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, dayIndex) => (
+                      <button
+                        key={dayIndex}
+                        type="button"
+                        onClick={() =>
+                          setDaysOfWeek((prev) =>
+                            prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex],
+                          )
+                        }
+                        className={`h-9 w-12 rounded-md border text-sm font-medium transition-colors ${
+                          daysOfWeek.includes(dayIndex)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-transparent hover:bg-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="seriesEndDate">Repeat Until *</Label>
+                    <Input
+                      id="seriesEndDate"
+                      type="date"
+                      value={seriesEndDate}
+                      onChange={(e) => setSeriesEndDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="seriesDriver">Assign Driver</Label>
+                    <Select value={seriesDriverId} onValueChange={setSeriesDriverId}>
+                      <SelectTrigger id="seriesDriver">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {drivers.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Creates a separate route for each matching date - each one can be worked, edited, or confirmed independently.
+                </p>
+              </div>
+            )}
           </div>
 
           {recommendedDurationMinutes > 0 && (

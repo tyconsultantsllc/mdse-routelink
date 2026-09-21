@@ -11,6 +11,16 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
 
 interface EditRouteModalProps {
@@ -41,6 +51,8 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
   const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string }>>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [seriesId, setSeriesId] = useState<string | null>(null)
+  const [showScopePrompt, setShowScopePrompt] = useState(false)
 
   useEffect(() => {
     if (open && routeId) {
@@ -61,6 +73,7 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
         setRouteName(routeData.name || "")
         setPriority(routeData.priority || "medium")
         setStatus(routeData.status || "pending")
+        setSeriesId(routeData.series_id || null)
         
         if (routeData.start_time) {
           const date = new Date(routeData.start_time)
@@ -145,29 +158,46 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
       return
     }
 
+    if (seriesId) {
+      setShowScopePrompt(true)
+      return
+    }
+
+    await performUpdate("this")
+  }
+
+  const performUpdate = async (scope: "this" | "following") => {
     setIsSubmitting(true)
     try {
-      const { updateRoute } = await import('@/app/actions/data-actions')
-      await updateRoute(routeId!, {
-        name: routeName,
-        startTime: startTime || undefined,
-        endTime: endTime || undefined,
-        priority,
-        status,
-        stops: stops.map((stop, index) => ({
-          id: stop.id,
-          pharmacyId: stop.pharmacyId,
-          pickupAddress: stop.pickupAddress,
-          dropoffAddress: stop.dropoffAddress,
-          stopOrder: index + 1,
-        })),
-      })
+      const { updateRouteOccurrence } = await import('@/app/actions/data-actions')
+      const result = await updateRouteOccurrence(
+        routeId!,
+        {
+          name: routeName,
+          startTime: startTime || undefined,
+          endTime: endTime || undefined,
+          priority,
+          status,
+          stops: stops.map((stop, index) => ({
+            id: stop.id,
+            pharmacyId: stop.pharmacyId,
+            pickupAddress: stop.pickupAddress,
+            dropoffAddress: stop.dropoffAddress,
+            stopOrder: index + 1,
+          })),
+        },
+        scope,
+      )
 
       toast({
         title: "Route Updated",
-        description: `${routeName} has been updated successfully`,
+        description:
+          scope === "following" && result.occurrencesUpdated > 1
+            ? `Updated ${result.occurrencesUpdated} occurrences in this series.`
+            : `${routeName} has been updated successfully`,
       })
       
+      setShowScopePrompt(false)
       onOpenChange(false)
       onSuccess?.()
     } catch (error: any) {
@@ -408,6 +438,28 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
           </form>
         )}
       </DialogContent>
+
+      <AlertDialog open={showScopePrompt} onOpenChange={setShowScopePrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply changes to...</AlertDialogTitle>
+            <AlertDialogDescription>
+              This route repeats on multiple days. Should these changes apply to just this occurrence, or to this and every later occurrence in the series?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-col gap-2">
+            <AlertDialogAction onClick={() => performUpdate("this")} disabled={isSubmitting} className="w-full">
+              Just This Occurrence
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => performUpdate("following")} disabled={isSubmitting} className="w-full">
+              This and Following Occurrences
+            </AlertDialogAction>
+            <AlertDialogCancel disabled={isSubmitting} className="w-full mt-0">
+              Cancel
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }
