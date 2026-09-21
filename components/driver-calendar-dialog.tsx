@@ -120,7 +120,6 @@ export function DriverCalendarDialog({ open, onOpenChange, routesByDate, onConfi
             if (!day) return <div key={`empty-${i}`} />
             const dateKey = formatDateKey(day)
             const dayRoutes = routesByDate.get(dateKey) || []
-            const hasUnconfirmed = dayRoutes.some((r) => r.driverConfirmation === "pending")
             const isSelected = dateKey === selectedDateKey
             const isToday = dateKey === formatDateKey(new Date())
             return (
@@ -133,15 +132,38 @@ export function DriverCalendarDialog({ open, onOpenChange, routesByDate, onConfi
               >
                 {day.getDate()}
                 {dayRoutes.length > 0 && (
-                  <span
-                    className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${
-                      hasUnconfirmed ? "bg-destructive" : isSelected ? "bg-primary-foreground" : "bg-primary"
-                    }`}
-                  />
+                  <span className="absolute bottom-1 flex gap-0.5">
+                    {dayRoutes.slice(0, 4).map((r) => (
+                      <span
+                        key={r.id}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isSelected
+                            ? "bg-primary-foreground"
+                            : r.driverConfirmation === "confirmed"
+                              ? "bg-green-500"
+                              : r.driverConfirmation === "declined"
+                                ? "bg-red-500"
+                                : "bg-amber-500"
+                        }`}
+                      />
+                    ))}
+                  </span>
                 )}
               </button>
             )
           })}
+        </div>
+
+        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Confirmed
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Pending
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Declined
+          </span>
         </div>
 
         <div className="space-y-2 pt-2 border-t">
@@ -156,7 +178,16 @@ export function DriverCalendarDialog({ open, onOpenChange, routesByDate, onConfi
             <p className="text-sm text-muted-foreground py-4 text-center">No routes scheduled this day.</p>
           ) : (
             selectedRoutes.map((route) => (
-              <div key={route.id} className="border rounded-lg p-3 space-y-2">
+              <div
+                key={route.id}
+                className={`border rounded-lg p-3 space-y-2 border-l-4 ${
+                  route.driverConfirmation === "confirmed"
+                    ? "border-l-green-500 bg-green-50/50"
+                    : route.driverConfirmation === "declined"
+                      ? "border-l-red-500 bg-red-50/50"
+                      : "border-l-amber-500 bg-amber-50/50"
+                }`}
+              >
                 <div className="flex items-center justify-between flex-wrap gap-1">
                   <span className="font-medium text-sm">{route.name}</span>
                   <Badge className={priorityColor(route.priority)}>{route.priority}</Badge>
