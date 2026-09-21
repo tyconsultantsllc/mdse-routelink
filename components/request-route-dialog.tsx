@@ -114,7 +114,7 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(o) : resetAndClose())}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden break-words sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Request a Route</DialogTitle>
         </DialogHeader>
@@ -133,6 +133,7 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
               onChange={(e) => setLinkText(e.target.value)}
               placeholder="https://www.bing.com/maps/directions?..."
               rows={3}
+              className="break-all"
             />
             <Button type="button" variant="outline" onClick={handleParseLink} disabled={!linkText.trim()} className="w-full">
               Parse Link
@@ -163,7 +164,7 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
         {previewStops.length > 0 && (
           <div className="space-y-2 pt-2">
             <Label>{previewStops.length} Stop{previewStops.length !== 1 ? "s" : ""}</Label>
-            <div className="space-y-1 max-h-48 overflow-y-auto">
+            <div className="space-y-1 max-h-80 overflow-y-auto">
               {previewStops.map((stop, index) => (
                 <div key={index} className="flex items-center justify-between gap-2 text-sm p-2 bg-muted/50 rounded">
                   <div className="flex items-start gap-2 min-w-0">
