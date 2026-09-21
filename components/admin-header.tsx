@@ -83,6 +83,29 @@ export function AdminHeader({ title, children }: AdminHeaderProps) {
         })
       }
 
+      const { data: declinedRoutes } = await supabase
+        .from("routes")
+        .select("id, name, updated_at, driver_id, drivers(users(first_name, last_name))")
+        .eq("driver_confirmation", "declined")
+        .order("updated_at", { ascending: false })
+        .limit(5)
+
+      for (const r of declinedRoutes || []) {
+        const id = `declined-route-${r.id}`
+        if (dismissedIdsRef.current.has(id)) continue
+        const driverInfo: any = Array.isArray((r as any).drivers) ? (r as any).drivers[0] : (r as any).drivers
+        const userInfo: any = Array.isArray(driverInfo?.users) ? driverInfo.users[0] : driverInfo?.users
+        const driverName = userInfo ? `${userInfo.first_name} ${userInfo.last_name}` : "a driver"
+        notifs.push({
+          id,
+          type: "warning",
+          title: `Route Declined - ${r.name}`,
+          message: `${driverName} declined this route. It needs to be reassigned.`,
+          timestamp: new Date(r.updated_at),
+          read: readIdsRef.current.has(id),
+        })
+      }
+
       const { data: readRows } = await supabase
         .from("admin_message_reads")
         .select("conversation_id, last_read_at")

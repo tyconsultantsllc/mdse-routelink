@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX } from 'lucide-react'
+import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,8 @@ import { confirmDeliveryStop, completeRoute as completeRouteAction, startStop, u
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { DriverSettingsDialog } from "@/components/driver-settings-dialog"
 import { ReturnToPharmacyDialog } from "@/components/return-to-pharmacy-dialog"
+import { DriverCalendarDialog } from "@/components/driver-calendar-dialog"
+import { UnconfirmedRoutesAlert } from "@/components/unconfirmed-routes-alert"
 import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
@@ -51,6 +53,8 @@ interface Route {
   status: "pending" | "in-progress" | "completed"
   startTime: string
   endTime: string
+  rawStartTime: string | null
+  driverConfirmation: "pending" | "confirmed" | "declined"
   stops: RouteStop[]
 }
 
@@ -73,6 +77,8 @@ export default function DriverTrackingPage() {
   const [driverEmail, setDriverEmail] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [returnsDialogOpen, setReturnsDialogOpen] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [unconfirmedAlertDismissed, setUnconfirmedAlertDismissed] = useState(false)
 
   useEffect(() => {
     fetchDriverRoutes()
@@ -160,6 +166,8 @@ export default function DriverTrackingPage() {
           name: r.name || "Unnamed Route",
           priority: r.priority || "medium",
           status: r.status || "pending",
+          rawStartTime: r.start_time || null,
+          driverConfirmation: r.driver_confirmation || "pending",
           startTime: r.start_time
             ? new Date(r.start_time).toLocaleTimeString("en-US", {
                 hour: "2-digit",
@@ -538,6 +546,41 @@ export default function DriverTrackingPage() {
     return Array.from(groups.values())
   }, [routes])
 
+  const routesByDate = useMemo(() => {
+    const map = new Map<string, any[]>()
+    routes.forEach((route) => {
+      if (!route.rawStartTime) return
+      const d = new Date(route.rawStartTime)
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      const entry = {
+        id: route.id,
+        name: route.name,
+        status: route.status,
+        priority: route.priority,
+        startTime: route.startTime,
+        endTime: route.endTime,
+        driverConfirmation: route.driverConfirmation,
+        stopCount: route.stops.length,
+      }
+      if (map.has(dateKey)) {
+        map.get(dateKey)!.push(entry)
+      } else {
+        map.set(dateKey, [entry])
+      }
+    })
+    return map
+  }, [routes])
+
+  const unconfirmedRoutesList = useMemo(() => {
+    return routes
+      .filter((r) => r.driverConfirmation === "pending" && r.rawStartTime)
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        dateLabel: new Date(r.rawStartTime!).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      }))
+  }, [routes])
+
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       {/* Header */}
@@ -557,6 +600,26 @@ export default function DriverTrackingPage() {
                 />
                 <span className="text-xs md:text-sm font-medium">{isTracking ? "Active" : "Paused"}</span>
               </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setCalendarOpen(true)}
+                      className="h-9 w-9 md:h-10 md:w-10 relative"
+                    >
+                      <CalendarDays className="h-4 w-4 md:h-5 md:w-5" />
+                      {unconfirmedRoutesList.length > 0 && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-[10px] leading-4 text-white text-center">
+                          {unconfirmedRoutesList.length}
+                        </span>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>My Schedule</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -929,6 +992,21 @@ export default function DriverTrackingPage() {
         driverId={driverId || ""}
         currentLocation={currentLocation}
         onConfirmed={fetchDriverRoutes}
+      />
+      <DriverCalendarDialog
+        open={calendarOpen}
+        onOpenChange={setCalendarOpen}
+        routesByDate={routesByDate}
+        onConfirmationChanged={fetchDriverRoutes}
+      />
+      <UnconfirmedRoutesAlert
+        open={unconfirmedRoutesList.length > 0 && !unconfirmedAlertDismissed}
+        routes={unconfirmedRoutesList}
+        onDismiss={() => setUnconfirmedAlertDismissed(true)}
+        onOpenCalendar={() => {
+          setUnconfirmedAlertDismissed(true)
+          setCalendarOpen(true)
+        }}
       />
     </div>
   )
