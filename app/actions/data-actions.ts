@@ -480,15 +480,23 @@ interface RouteInsertData {
  * stay identical rather than drifting apart over time.
  */
 async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClient>, routeData: RouteInsertData) {
+  const baseDate = routeData.startDate ? new Date(`${routeData.startDate}T00:00:00`) : new Date()
+
   const buildTimestamp = (timeStr?: string) => {
     if (!timeStr) return null
-    const baseDate = routeData.startDate ? new Date(`${routeData.startDate}T00:00:00`) : new Date()
+    const d = new Date(baseDate)
     const [hours, minutes] = timeStr.split(':')
-    baseDate.setHours(parseInt(hours), parseInt(minutes), 0, 0)
-    return baseDate.toISOString()
+    d.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+    return d.toISOString()
   }
 
-  const startTimeTimestamp = buildTimestamp(routeData.startTime)
+  // start_time is the only field either calendar (admin or driver) uses to
+  // place a route on a given day. Previously, no time-of-day meant no
+  // start_time at all - which meant no date at all - which made the route
+  // invisible on both calendars even though it was scheduled for a real
+  // day. It now always carries at least the date, defaulting the
+  // time-of-day to midnight when none was given.
+  const startTimeTimestamp = buildTimestamp(routeData.startTime) || baseDate.toISOString()
   const endTimeTimestamp = buildTimestamp(routeData.endTime)
 
   const { data: route, error: routeError } = await supabase
@@ -572,7 +580,7 @@ export async function createRouteSeries(input: {
   estimatedDuration?: number
   daysOfWeek: number[]
   seriesStartDate: string
-  seriesEndDate: string
+  seriesEndDate?: string
   stops: Array<{
     pharmacyId: string
     pickupAddress: string
@@ -591,7 +599,16 @@ export async function createRouteSeries(input: {
   if (input.daysOfWeek.length === 0) throw new Error('Select at least one day of the week')
 
   const start = new Date(`${input.seriesStartDate}T00:00:00`)
-  const end = new Date(`${input.seriesEndDate}T00:00:00`)
+  // No truly indefinite option - an end date left blank defaults to 3
+  // months out rather than requiring the admin to pick an exact date.
+  const effectiveEndDate =
+    input.seriesEndDate ||
+    (() => {
+      const d = new Date(start)
+      d.setMonth(d.getMonth() + 3)
+      return d.toISOString().split('T')[0]
+    })()
+  const end = new Date(`${effectiveEndDate}T00:00:00`)
   if (end < start) throw new Error('End date must be on or after the start date')
 
   const supabase = createAdminClient()
@@ -607,7 +624,7 @@ export async function createRouteSeries(input: {
       estimated_duration: input.estimatedDuration || null,
       days_of_week: input.daysOfWeek,
       series_start_date: input.seriesStartDate,
-      series_end_date: input.seriesEndDate,
+      series_end_date: effectiveEndDate,
       stops_template: input.stops,
     })
     .select()
@@ -781,7 +798,7 @@ export async function updateRoute(routeId: number, routeData: {
     return d.toISOString()
   }
 
-  const startTimeTimestamp = buildTimestamp(routeData.startTime)
+  const startTimeTimestamp = buildTimestamp(routeData.startTime) || baseDate.toISOString()
   const endTimeTimestamp = buildTimestamp(routeData.endTime)
   
   // Update the route

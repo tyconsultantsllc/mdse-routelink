@@ -151,11 +151,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       return
     }
 
-    if (isRecurring && !seriesEndDate) {
-      toast({ title: "End date required", description: "Recurring routes need an end date.", variant: "destructive" })
-      return
-    }
-
     setIsSubmitting(true)
     try {
       const startDate = initialDate
@@ -180,7 +175,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
           daysOfWeek,
           seriesStartDate: startDate || new Date().toISOString().split('T')[0],
-          seriesEndDate: seriesEndDate,
+          seriesEndDate: seriesEndDate || undefined,
           stops: formattedStops,
         })
         toast({
@@ -482,7 +477,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="seriesEndDate">Repeat Until *</Label>
+                    <Label htmlFor="seriesEndDate">Repeat Until (optional)</Label>
                     <Input
                       id="seriesEndDate"
                       type="date"
@@ -508,6 +503,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Creates a separate route for each matching date - each one can be worked, edited, or confirmed independently.
+                  {!seriesEndDate && " Leave the end date blank to repeat for the next 3 months."}
                 </p>
               </div>
             )}
