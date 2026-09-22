@@ -126,6 +126,7 @@ export default function PharmacyDashboard() {
             estimatedDuration: stop.estimated_time || 30,
             priority: stop.routes?.priority || "medium",
             status: stop.routes?.status || "pending",
+            driverConfirmation: stop.routes?.driver_confirmation || "pending",
             // total_distance was never a real column on routes - removed rather
             // than silently showing a number that was always undefined
             createdAt: stop.created_at,
@@ -251,6 +252,17 @@ export default function PharmacyDashboard() {
         return <Badge className="bg-green-500">Completed</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const getConfirmationBadge = (confirmation: string) => {
+    switch (confirmation) {
+      case "confirmed":
+        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Driver Confirmed</Badge>
+      case "declined":
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Driver Declined</Badge>
+      default:
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Awaiting Driver</Badge>
     }
   }
 
@@ -414,6 +426,7 @@ export default function PharmacyDashboard() {
                           />
                           <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
                           {getStatusBadge(delivery.status)}
+                          {getConfirmationBadge(delivery.driverConfirmation || "pending")}
                         </div>
                         <div className="text-xs md:text-sm text-muted-foreground space-y-1">
                           <p>Driver: {delivery.assignedDriverName}</p>

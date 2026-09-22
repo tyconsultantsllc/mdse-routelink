@@ -75,6 +75,8 @@ export default function RouteManagement() {
             stops: stops.length,
             failedStops,
             returnedStops,
+            driverConfirmation: r.driver_confirmation || "pending",
+            declinedReason: r.declined_reason || null,
             startTime: r.start_time
               ? new Date(r.start_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
@@ -324,6 +326,24 @@ export default function RouteManagement() {
                                 {route.returnedStops} returned
                               </Badge>
                             )}
+                            {route.driverConfirmation === "declined" ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge className="bg-red-100 text-red-800 hover:bg-red-100 cursor-help">
+                                      Declined
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {route.declinedReason || "No reason given"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : route.driverConfirmation === "confirmed" ? (
+                              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Confirmed</Badge>
+                            ) : route.assignedDriver ? (
+                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Awaiting Driver</Badge>
+                            ) : null}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

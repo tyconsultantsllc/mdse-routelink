@@ -50,6 +50,7 @@ export interface Route {
   estimatedDuration: number // minutes
   priority: "low" | "medium" | "high" | "urgent"
   status: "pending" | "in-progress" | "completed"
+  driverConfirmation?: "pending" | "confirmed" | "declined"
   totalDistance: number // miles
   createdAt: string
   completedAt?: string
