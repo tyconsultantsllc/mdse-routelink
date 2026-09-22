@@ -303,6 +303,57 @@ export async function getOwnPharmacyReturnSignatureMode() {
   return pharmacyRow?.return_signature_mode || 'batch'
 }
 
+export async function getOwnPharmacyTrackingEnabled() {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id, pharmacies(customer_tracking_enabled)')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const pharmacyRow = Array.isArray(pharmacyUser?.pharmacies) ? pharmacyUser.pharmacies[0] : pharmacyUser?.pharmacies
+  return !!pharmacyRow?.customer_tracking_enabled
+}
+
+export async function updateOwnPharmacyTrackingEnabled(enabled: boolean) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const { data, error } = await supabase
+    .from('pharmacies')
+    .update({ customer_tracking_enabled: enabled })
+    .eq('id', pharmacyUser.pharmacy_id)
+    .select()
+
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('Update did not match any pharmacy record')
+
+  return { success: true }
+}
+
 export async function updateOwnProfile(updates: {
   firstName?: string
   lastName?: string
@@ -589,6 +640,7 @@ export async function createRouteSeries(input: {
     dropoffLatitude?: number | null
     dropoffLongitude?: number | null
   }>
+  confirmDespiteConflicts?: boolean
 }) {
   const { role } = await verifyAuth()
 
@@ -611,6 +663,39 @@ export async function createRouteSeries(input: {
   const end = new Date(`${effectiveEndDate}T00:00:00`)
   if (end < start) throw new Error('End date must be on or after the start date')
 
+  const occurrenceDates: string[] = []
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (input.daysOfWeek.includes(d.getDay())) {
+      occurrenceDates.push(d.toISOString().split('T')[0])
+    }
+  }
+
+  if (occurrenceDates.length === 0) {
+    throw new Error('No dates in that range match the selected days of the week')
+  }
+
+  // Check every occurrence for a conflict before creating anything, so a
+  // cancelled warning doesn't leave a half-created series behind.
+  if (input.driverId && !input.confirmDespiteConflicts) {
+    const buildOccurrenceTimestamp = (dateStr: string, timeStr?: string) => {
+      const d = new Date(`${dateStr}T00:00:00`)
+      if (timeStr) {
+        const [h, m] = timeStr.split(':')
+        d.setHours(parseInt(h), parseInt(m), 0, 0)
+      }
+      return d.toISOString()
+    }
+    const ranges = occurrenceDates.map((date) => ({
+      start: buildOccurrenceTimestamp(date, input.startTime),
+      end: input.endTime ? buildOccurrenceTimestamp(date, input.endTime) : undefined,
+      label: date,
+    }))
+    const conflicts = await checkDriverConflicts(input.driverId, ranges)
+    if (conflicts.length > 0) {
+      return { conflicts, series: null, routes: [] }
+    }
+  }
+
   const supabase = createAdminClient()
 
   const { data: series, error: seriesError } = await supabase
@@ -632,17 +717,6 @@ export async function createRouteSeries(input: {
 
   if (seriesError) throw seriesError
 
-  const occurrenceDates: string[] = []
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    if (input.daysOfWeek.includes(d.getDay())) {
-      occurrenceDates.push(d.toISOString().split('T')[0])
-    }
-  }
-
-  if (occurrenceDates.length === 0) {
-    throw new Error('No dates in that range match the selected days of the week')
-  }
-
   const routes = []
   for (const date of occurrenceDates) {
     const route = await insertRouteWithStops(supabase, {
@@ -659,7 +733,7 @@ export async function createRouteSeries(input: {
     routes.push(route)
   }
 
-  return { series, routes }
+  return { series, routes, conflicts: [] as any[] }
 }
 
 /**
@@ -746,6 +820,139 @@ export async function assignDriverToRoute(routeId: number, driverId: string) {
   if (error) throw error
   
   return { success: true }
+}
+
+export async function getRouteSeriesDetails(seriesId: string) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: series, error: seriesError } = await supabase
+    .from('route_series')
+    .select('*, drivers(id, users(first_name, last_name))')
+    .eq('id', seriesId)
+    .single()
+
+  if (seriesError) throw seriesError
+
+  const { data: occurrences, error: occurrencesError } = await supabase
+    .from('routes')
+    .select('id, name, start_time, end_time, status, driver_confirmation, declined_reason, route_stops(id, status)')
+    .eq('series_id', seriesId)
+    .order('start_time', { ascending: true })
+
+  if (occurrencesError) throw occurrencesError
+
+  const driverInfo: any = Array.isArray((series as any).drivers) ? (series as any).drivers[0] : (series as any).drivers
+  const userInfo: any = Array.isArray(driverInfo?.users) ? driverInfo.users[0] : driverInfo?.users
+  const driverName = userInfo ? `${userInfo.first_name} ${userInfo.last_name}` : "Unassigned"
+
+  return {
+    series: {
+      id: series.id,
+      name: series.name,
+      driverName,
+      priority: series.priority,
+      daysOfWeek: series.days_of_week as number[],
+      seriesStartDate: series.series_start_date,
+      seriesEndDate: series.series_end_date,
+      startTimeOfDay: series.start_time_of_day,
+      endTimeOfDay: series.end_time_of_day,
+      stopCount: (series.stops_template as any[])?.length || 0,
+    },
+    occurrences: (occurrences || []).map((o: any) => ({
+      id: o.id,
+      name: o.name,
+      startTime: o.start_time,
+      status: o.status,
+      driverConfirmation: o.driver_confirmation,
+      declinedReason: o.declined_reason,
+      stopCount: (o.route_stops || []).length,
+    })),
+  }
+}
+
+/**
+ * Public, unauthenticated lookup for the customer-facing tracking page.
+ * Deliberately does NOT call verifyAuth() - this is meant to be reachable
+ * by anyone holding the tracking link, no login involved. To keep that
+ * safe, it uses the admin client but hand-picks only non-identifying
+ * fields to return: no recipient name, no exact address, no notes, no
+ * other stops' details beyond a plain count. A stop can only ever be
+ * looked up by its own random tracking_code - there is no way to list or
+ * enumerate deliveries through this action.
+ */
+export async function getPublicTrackingInfo(trackingCode: string) {
+  const supabase = createAdminClient()
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select('id, route_id, status, stop_order, pharmacy_id, actual_pickup_time, actual_delivery_time')
+    .eq('tracking_code', trackingCode)
+    .maybeSingle()
+
+  if (stopError) throw stopError
+  if (!stop) return null
+
+  const { data: pharmacy } = await supabase
+    .from('pharmacies')
+    .select('name, customer_tracking_enabled')
+    .eq('id', stop.pharmacy_id)
+    .single()
+
+  // Respect the pharmacy's current setting even for a link generated
+  // earlier - if they've since turned tracking off, the link stops working.
+  if (!pharmacy?.customer_tracking_enabled) return null
+
+  const { data: route } = await supabase
+    .from('routes')
+    .select('status, driver_id')
+    .eq('id', stop.route_id)
+    .single()
+
+  let driverFirstName: string | null = null
+  let driverLocation: { latitude: number; longitude: number; updatedAt: string } | null = null
+
+  if (route?.driver_id) {
+    const { data: driver } = await supabase
+      .from('drivers')
+      .select('current_latitude, current_longitude, last_location_update, users(first_name)')
+      .eq('id', route.driver_id)
+      .single()
+
+    const userInfo: any = Array.isArray((driver as any)?.users) ? (driver as any).users[0] : (driver as any)?.users
+    driverFirstName = userInfo?.first_name || null
+
+    // Only surface a live position while this specific stop is the one
+    // actively being driven to - not for the whole route's duration.
+    if (stop.status === 'picked_up' && driver?.current_latitude && driver?.current_longitude) {
+      driverLocation = {
+        latitude: driver.current_latitude,
+        longitude: driver.current_longitude,
+        updatedAt: driver.last_location_update,
+      }
+    }
+  }
+
+  const { count: stopsAhead } = await supabase
+    .from('route_stops')
+    .select('id', { count: 'exact', head: true })
+    .eq('route_id', stop.route_id)
+    .lt('stop_order', stop.stop_order)
+    .in('status', ['pending', 'picked_up'])
+
+  return {
+    pharmacyName: pharmacy.name,
+    status: stop.status as 'pending' | 'picked_up' | 'delivered' | 'failed' | 'returned',
+    routeStatus: route?.status || 'pending',
+    stopsAhead: stopsAhead || 0,
+    driverFirstName,
+    driverLocation,
+    deliveredAt: stop.actual_delivery_time,
+  }
 }
 
 export async function getRouteById(routeId: number) {

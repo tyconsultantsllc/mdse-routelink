@@ -13,6 +13,7 @@ import { EditRouteModal } from "@/components/edit-route-modal"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import dynamic from "next/dynamic"
 import { AssignDriverModal } from "@/components/assign-driver-modal"
+import { SeriesDetailModal } from "@/components/series-detail-modal"
 import { useToast } from "@/components/ui/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
@@ -44,6 +45,7 @@ export default function RouteManagement() {
 
   const [routes, setRoutes] = useState<any[]>([])
   const [selectedRegion, setSelectedRegion] = useState("all")
+  const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function RouteManagement() {
             returnedStops,
             driverConfirmation: r.driver_confirmation || "pending",
             declinedReason: r.declined_reason || null,
+            seriesId: r.series_id || null,
             startTime: r.start_time
               ? new Date(r.start_time).toLocaleTimeString("en-US", {
                   hour: "2-digit",
@@ -271,7 +274,17 @@ export default function RouteManagement() {
                     {filteredRoutes.map((route) => (
                       <tr key={route.id} className={!route.assignedDriver ? "bg-orange-50/50" : ""}>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-foreground">{route.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-foreground">{route.name}</div>
+                            {route.seriesId && (
+                              <button
+                                onClick={() => setViewingSeriesId(route.seriesId)}
+                                className="text-xs text-primary hover:underline shrink-0"
+                              >
+                                Series
+                              </button>
+                            )}
+                          </div>
                           <div className="text-sm text-muted-foreground">
                             {route.distance} • {route.estimatedDuration}
                           </div>
@@ -438,6 +451,12 @@ export default function RouteManagement() {
           routeId={selectedRoute?.id || 0}
           currentDriver={selectedRoute?.driver}
           onAssign={handleDriverAssigned}
+        />
+
+        <SeriesDetailModal
+          open={!!viewingSeriesId}
+          onOpenChange={(open) => !open && setViewingSeriesId(null)}
+          seriesId={viewingSeriesId}
         />
 
         <Dialog open={!!deleteConfirmRoute} onOpenChange={() => setDeleteConfirmRoute(null)}>

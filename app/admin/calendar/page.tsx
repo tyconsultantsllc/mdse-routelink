@@ -15,6 +15,7 @@ import { getRouteRegion, type Region } from "@/lib/region-utils"
 import { useToast } from "@/components/ui/use-toast"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { WeeklyDriverSchedule } from "@/components/weekly-driver-schedule"
+import { SeriesDetailModal } from "@/components/series-detail-modal"
 
 interface ScheduledRoute {
   id: number
@@ -27,6 +28,7 @@ interface ScheduledRoute {
   priority: "low" | "medium" | "high" | "urgent"
   region: Region | null
   driverConfirmation: "pending" | "confirmed" | "declined"
+  seriesId: string | null
   stops: number
   stopDetails: { pharmacyId: string; pharmacyName: string; pickupAddress: string; dropoffAddress: string }[]
   status: "scheduled" | "in-progress" | "completed"
@@ -56,6 +58,7 @@ export default function CalendarView() {
   const [scheduledRoutes, setScheduledRoutes] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"month" | "week">("month")
+  const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -86,6 +89,7 @@ export default function CalendarView() {
             priority: route.priority || 'medium',
             region: getRouteRegion(route.route_stops || []),
             driverConfirmation: route.driver_confirmation || "pending",
+            seriesId: route.series_id || null,
             stops: route.route_stops?.length || 0,
             stopDetails: (route.route_stops || [])
               .sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0))
@@ -367,7 +371,17 @@ export default function CalendarView() {
                           <AvatarFallback>{route.driver[0]}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold">{route.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">{route.name}</p>
+                            {route.seriesId && (
+                              <button
+                                onClick={() => setViewingSeriesId(route.seriesId)}
+                                className="text-xs text-primary hover:underline"
+                              >
+                                Series
+                              </button>
+                            )}
+                          </div>
                           <p className="text-sm text-muted-foreground">
                             {route.driver} • {route.stops} stops
                           </p>
@@ -435,6 +449,11 @@ export default function CalendarView() {
             ? { name: copyFromRoute.name, priority: copyFromRoute.priority, stops: copyFromRoute.stopDetails }
             : null
         }
+      />
+      <SeriesDetailModal
+        open={!!viewingSeriesId}
+        onOpenChange={(open) => !open && setViewingSeriesId(null)}
+        seriesId={viewingSeriesId}
       />
     </div>
   )

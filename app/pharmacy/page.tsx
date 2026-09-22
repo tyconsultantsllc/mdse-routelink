@@ -39,6 +39,7 @@ export default function PharmacyDashboard() {
   const { toast } = useToast()
   const [pharmacyName, setPharmacyName] = useState("")
   const [pharmacyId, setPharmacyId] = useState("")
+  const [trackingEnabled, setTrackingEnabled] = useState(false)
   const [userId, setUserId] = useState("")
   const [userEmail, setUserEmail] = useState("")
   const [changeEmailOpen, setChangeEmailOpen] = useState(false)
@@ -91,11 +92,15 @@ export default function PharmacyDashboard() {
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
         .from("route_stops")
-        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude, region)")
+        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude, region, customer_tracking_enabled)")
         .eq("pharmacy_id", pharmacyUser.pharmacy_id)
         .order("created_at", { ascending: false })
 
       if (error) throw error
+
+      if (data && data.length > 0) {
+        setTrackingEnabled(!!data[0].pharmacies?.customer_tracking_enabled)
+      }
 
       // Transform to Route format
       const groupedRoutes = new Map()
@@ -158,6 +163,7 @@ export default function PharmacyDashboard() {
             dropoff: null as { lat: number; lng: number } | null,
           },
           dropoffAddressRaw: stop.dropoff_address,
+          trackingCode: stop.tracking_code,
         })
       })
 
@@ -266,6 +272,12 @@ export default function PharmacyDashboard() {
     }
   }
 
+  const copyTrackingLink = (trackingCode: string) => {
+    const url = `${window.location.origin}/track/${trackingCode}`
+    navigator.clipboard.writeText(url)
+    toast({ title: "Link copied", description: "Share it with your customer to let them track their delivery." })
+  }
+
   const avgDeliveryTime =
     completedDeliveries.length > 0
       ? Math.round(completedDeliveries.reduce((sum, d) => sum + d.estimatedDuration, 0) / completedDeliveries.length)
@@ -341,7 +353,7 @@ export default function PharmacyDashboard() {
                     <PackageCheck className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Failed Delivery Returns</TooltipContent>
+                <TooltipContent>Delivery Settings</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -437,10 +449,20 @@ export default function PharmacyDashboard() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex md:block justify-end">
+                      <div className="flex md:flex-col md:items-end justify-end gap-2">
                         <Badge variant="outline" className="capitalize text-xs">
                           {delivery.priority}
                         </Badge>
+                        {trackingEnabled && delivery.stops[0]?.trackingCode && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 bg-transparent"
+                            onClick={() => copyTrackingLink(delivery.stops[0].trackingCode!)}
+                          >
+                            Copy Tracking Link
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))

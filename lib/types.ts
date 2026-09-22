@@ -37,6 +37,7 @@ export interface RouteStop {
     pickup: { lat: number; lng: number }
     dropoff: { lat: number; lng: number }
   }
+  trackingCode?: string
 }
 
 export interface Route {
