@@ -10,6 +10,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { getDriverDetails } from "@/lib/region-utils"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface AssignDriverModalProps {
   open: boolean
@@ -33,6 +43,9 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
   const [selectedDriver, setSelectedDriver] = useState<string>("")
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [loading, setLoading] = useState(true)
+  const [allRoutes, setAllRoutes] = useState<any[]>([])
+  const [conflictWarning, setConflictWarning] = useState<{ conflictsWith: Array<{ id: number; name: string }> } | null>(null)
+  const [assigning, setAssigning] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -62,6 +75,7 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
       })
       
       setDrivers(driverUsers)
+      setAllRoutes(routes)
     } catch (error) {
       console.error("Error fetching drivers:", error)
       toast({
@@ -85,6 +99,33 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
     }
 
     try {
+      const currentRoute = allRoutes.find((r: any) => r.id === routeId)
+      if (currentRoute?.start_time) {
+        const { checkDriverConflicts } = await import("@/app/actions/data-actions")
+        const conflicts = await checkDriverConflicts(
+          selectedDriver,
+          [{ start: currentRoute.start_time, end: currentRoute.end_time, label: routeName }],
+          routeId,
+        )
+        if (conflicts.length > 0) {
+          setConflictWarning(conflicts[0])
+          return
+        }
+      }
+
+      await performAssign()
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to check for scheduling conflicts",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const performAssign = async () => {
+    setAssigning(true)
+    try {
       const { assignDriverToRoute } = await import("@/app/actions/data-actions")
       await assignDriverToRoute(routeId, selectedDriver)
 
@@ -97,6 +138,7 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
         })
         onOpenChange(false)
         setSelectedDriver("")
+        setConflictWarning(null)
       }
     } catch (error) {
       console.error("Error assigning driver:", error)
@@ -105,6 +147,8 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
         description: "Failed to assign driver",
         variant: "destructive",
       })
+    } finally {
+      setAssigning(false)
     }
   }
 
@@ -216,12 +260,28 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
             >
               Cancel
             </Button>
-            <Button onClick={handleAssign} className="flex-1">
-              {currentDriver ? "Reassign Driver" : "Assign Driver"}
+            <Button onClick={handleAssign} className="flex-1" disabled={assigning}>
+              {assigning ? "Assigning..." : currentDriver ? "Reassign Driver" : "Assign Driver"}
             </Button>
           </div>
         </div>
       </DialogContent>
+
+      <AlertDialog open={!!conflictWarning} onOpenChange={(o) => !o && setConflictWarning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Scheduling Conflict</AlertDialogTitle>
+            <AlertDialogDescription>
+              This driver is already assigned to a route that overlaps this time:{" "}
+              {conflictWarning?.conflictsWith.map((c) => c.name).join(", ")}. Assign anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConflictWarning(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performAssign}>Assign Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

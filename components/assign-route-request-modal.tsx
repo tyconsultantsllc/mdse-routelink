@@ -8,6 +8,16 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { getDriverDetails } from "@/lib/region-utils"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface AssignRouteRequestModalProps {
   open: boolean
@@ -26,6 +36,7 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [conflictWarning, setConflictWarning] = useState<Array<{ id: number; name: string }> | null>(null)
 
   useEffect(() => {
     if (!open || !request) return
@@ -64,6 +75,37 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
       toast({ title: "Select a driver", variant: "destructive" })
       return
     }
+
+    try {
+      if (startTime) {
+        const today = new Date()
+        const [h, m] = startTime.split(':')
+        today.setHours(parseInt(h), parseInt(m), 0, 0)
+        let endTimestamp: string | undefined
+        if (endTime) {
+          const endDate = new Date()
+          const [eh, em] = endTime.split(':')
+          endDate.setHours(parseInt(eh), parseInt(em), 0, 0)
+          endTimestamp = endDate.toISOString()
+        }
+
+        const { checkDriverConflicts } = await import("@/app/actions/data-actions")
+        const conflicts = await checkDriverConflicts(driverId, [
+          { start: today.toISOString(), end: endTimestamp, label: routeName },
+        ])
+        if (conflicts.length > 0) {
+          setConflictWarning(conflicts[0].conflictsWith)
+          return
+        }
+      }
+
+      await performAssign()
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" })
+    }
+  }
+
+  const performAssign = async () => {
     setSubmitting(true)
     try {
       const { assignRouteRequestToDriver } = await import("@/app/actions/data-actions")
@@ -76,6 +118,7 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
         endTime: endTime || undefined,
       })
       toast({ title: "Route created", description: "The request has been assigned and is now a live route." })
+      setConflictWarning(null)
       onAssigned()
       onOpenChange(false)
     } catch (error: any) {
@@ -147,6 +190,21 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
           </Button>
         </div>
       </DialogContent>
+
+      <AlertDialog open={!!conflictWarning} onOpenChange={(o) => !o && setConflictWarning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Scheduling Conflict</AlertDialogTitle>
+            <AlertDialogDescription>
+              This driver is already assigned to a route that overlaps this time: {conflictWarning?.map((c) => c.name).join(", ")}. Assign anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConflictWarning(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performAssign}>Assign Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

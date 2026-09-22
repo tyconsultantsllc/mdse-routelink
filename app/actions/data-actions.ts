@@ -662,6 +662,67 @@ export async function createRouteSeries(input: {
   return { series, routes }
 }
 
+/**
+ * Checks whether a driver already has other routes overlapping any of the
+ * given time ranges. Used before assigning a driver (single route, a route
+ * request, or every occurrence of a new series) so a conflict is caught
+ * before it's created rather than discovered after the fact.
+ *
+ * Routes with no end_time are treated as a 4-hour block for the purposes
+ * of this comparison only - it doesn't change any stored data, just gives
+ * the overlap check something concrete to compare against.
+ */
+export async function checkDriverConflicts(
+  driverId: string,
+  ranges: Array<{ start: string; end?: string | null; label: string }>,
+  excludeRouteId?: number,
+) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+  if (!driverId || ranges.length === 0) return []
+
+  const supabase = createAdminClient()
+
+  const { data: existingRoutes, error } = await supabase
+    .from('routes')
+    .select('id, name, start_time, end_time, status')
+    .eq('driver_id', driverId)
+    .neq('status', 'completed')
+
+  if (error) throw error
+
+  const DEFAULT_BLOCK_MS = 4 * 60 * 60 * 1000
+
+  const asWindow = (start: string, end?: string | null) => {
+    const startMs = new Date(start).getTime()
+    const endMs = end ? new Date(end).getTime() : startMs + DEFAULT_BLOCK_MS
+    return { startMs, endMs: endMs > startMs ? endMs : startMs + DEFAULT_BLOCK_MS }
+  }
+
+  const conflicts: Array<{ label: string; conflictsWith: Array<{ id: number; name: string }> }> = []
+
+  for (const range of ranges) {
+    const candidate = asWindow(range.start, range.end)
+    const matches = (existingRoutes || [])
+      .filter((r) => r.id !== excludeRouteId && r.start_time)
+      .filter((r) => {
+        const existing = asWindow(r.start_time, r.end_time)
+        return candidate.startMs < existing.endMs && existing.startMs < candidate.endMs
+      })
+
+    if (matches.length > 0) {
+      conflicts.push({
+        label: range.label,
+        conflictsWith: matches.map((m) => ({ id: m.id, name: m.name })),
+      })
+    }
+  }
+
+  return conflicts
+}
+
 export async function assignDriverToRoute(routeId: number, driverId: string) {
   const { role } = await verifyAuth()
   
