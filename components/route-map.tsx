@@ -8,6 +8,8 @@ import { geocodeAddress } from "@/lib/geocode"
 interface RouteStop {
   stop_order: number
   dropoff_address: string
+  dropoff_latitude?: number | null
+  dropoff_longitude?: number | null
   pharmacies?: {
     name: string
     address: string
@@ -18,6 +20,7 @@ interface RouteStop {
 
 interface RouteMapProps {
   highlightedRouteId?: string | null
+  onHighlightMissing?: () => void
   routes?: Array<{
     id: string
     name: string
@@ -33,7 +36,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "#6b7280",
 }
 
-export default function RouteMap({ highlightedRouteId, routes = [] }: RouteMapProps) {
+export default function RouteMap({ highlightedRouteId, onHighlightMissing, routes = [] }: RouteMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const routeLayersRef = useRef<Map<string, L.Polyline>>(new Map())
@@ -84,9 +87,14 @@ export default function RouteMap({ highlightedRouteId, routes = [] }: RouteMapPr
             points.push([stop.pharmacies.latitude, stop.pharmacies.longitude])
           }
 
-          // Dropoff: geocoded live, since delivery addresses are free text
-          // with no stored coordinates (same approach as the route optimizer)
-          if (stop.dropoff_address) {
+          // Dropoff: prefer coordinates already stored on the stop (set at
+          // creation time whenever they're known, e.g. from a parsed maps
+          // link) - only fall back to a live geocode, which is slower,
+          // rate-limited to ~1/second, and depends on Nominatim being
+          // reachable right now, when nothing is stored yet.
+          if (stop.dropoff_latitude != null && stop.dropoff_longitude != null) {
+            points.push([stop.dropoff_latitude, stop.dropoff_longitude])
+          } else if (stop.dropoff_address) {
             const coords = await geocodeAddress(stop.dropoff_address)
             if (cancelled) return
             if (coords) {
@@ -142,6 +150,11 @@ export default function RouteMap({ highlightedRouteId, routes = [] }: RouteMapPr
       setTimeout(() => {
         polyline.setStyle({ weight: 4, opacity: 0.7 })
       }, 3000)
+    } else {
+      // Either this route has no usable coordinates on any of its stops,
+      // or the map is still busy locating addresses for other routes -
+      // either way, let the admin know rather than doing nothing visibly.
+      onHighlightMissing?.()
     }
   }, [highlightedRouteId])
 

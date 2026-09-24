@@ -39,6 +39,7 @@ export default function RouteManagement() {
   const [selectedRoute, setSelectedRoute] = useState<{ id: number; name: string; driver?: string } | null>(null)
   const [deleteConfirmRoute, setDeleteConfirmRoute] = useState<{ id: number; name: string } | null>(null)
   const [highlightedRouteId, setHighlightedRouteId] = useState<string | null>(null)
+  const [highlightedRouteName, setHighlightedRouteName] = useState<string>("")
   const mapRef = useRef<HTMLDivElement>(null)
 
   const { toast } = useToast()
@@ -195,11 +196,8 @@ export default function RouteManagement() {
 
   const handleViewOnMap = (routeId: string, routeName: string) => {
     setHighlightedRouteId(routeId)
+    setHighlightedRouteName(routeName)
     mapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-    toast({
-      title: "View on Map",
-      description: `Highlighting ${routeName} on the map`,
-    })
     setTimeout(() => setHighlightedRouteId(null), 3000)
   }
 
@@ -234,7 +232,17 @@ export default function RouteManagement() {
             </div>
 
             <Card className="p-6 mb-6" ref={mapRef}>
-              <RouteMap highlightedRouteId={highlightedRouteId} routes={routes} />
+              <RouteMap
+                highlightedRouteId={highlightedRouteId}
+                routes={routes}
+                onHighlightMissing={() =>
+                  toast({
+                    title: "Couldn't show this route on the map",
+                    description: `${highlightedRouteName || "This route"} may not have valid stop addresses yet, or the map is still locating stops for other routes - try again in a moment.`,
+                    variant: "destructive",
+                  })
+                }
+              />
             </Card>
 
             <Card className="overflow-hidden">
