@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertTriangle, MapPin, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { parseBingMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
+import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
 
 interface RequestRouteDialogProps {
   open: boolean
@@ -40,20 +40,57 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
     onOpenChange(false)
   }
 
-  const handleParseLink = () => {
-    const parsed = parseBingMapsLink(linkText.trim())
-    if (!parsed) {
+  const handleParseLink = async () => {
+    const bingParsed = parseBingMapsLink(linkText.trim())
+    if (bingParsed) {
+      setPreviewStops(bingParsed.deliveryStops.map((s) => ({ address: s.address, lat: s.lat, lng: s.lng })))
+      toast({ title: "Link parsed", description: `Found ${bingParsed.deliveryStops.length} delivery stop(s).` })
+      return
+    }
+
+    const googleParsed = parseGoogleMapsLink(linkText.trim())
+    if (googleParsed === "shortened") {
       toast({
-        title: "Couldn't read that link",
-        description: "That doesn't look like a Bing Maps directions link. You can still type addresses manually below.",
+        title: "That's a shortened Google Maps link",
+        description: "Please open it and paste the full address bar link instead - a shortened link can't be read directly.",
         variant: "destructive",
       })
       return
     }
-    setPreviewStops(
-      parsed.deliveryStops.map((s) => ({ address: s.address, lat: s.lat, lng: s.lng })),
-    )
-    toast({ title: "Link parsed", description: `Found ${parsed.deliveryStops.length} delivery stop(s).` })
+    if (googleParsed) {
+      if (googleParsed.deliveryStops.length === 0) {
+        toast({
+          title: "No delivery stops found",
+          description: "That link only had one address. You can still type addresses manually below.",
+          variant: "destructive",
+        })
+        return
+      }
+      setParsing(true)
+      try {
+        const { geocodeAddress } = await import("@/lib/geocode")
+        const stops: PreviewStop[] = []
+        for (const address of googleParsed.deliveryStops) {
+          const coords = await geocodeAddress(address)
+          stops.push({ address, lat: coords?.lat ?? null, lng: coords?.lng ?? null })
+          // Nominatim's usage policy caps requests at ~1/second
+          await new Promise((resolve) => setTimeout(resolve, 1100))
+        }
+        setPreviewStops(stops)
+        toast({ title: "Link parsed", description: `Found ${stops.length} delivery stop(s).` })
+      } catch (error: any) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      } finally {
+        setParsing(false)
+      }
+      return
+    }
+
+    toast({
+      title: "Couldn't read that link",
+      description: "That doesn't look like a Bing or Google Maps directions link. You can still type addresses manually below.",
+      variant: "destructive",
+    })
   }
 
   const handleUseManualList = async () => {
@@ -126,17 +163,17 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
           </TabsList>
 
           <TabsContent value="link" className="space-y-3 pt-4">
-            <Label htmlFor="linkInput">Bing Maps directions link</Label>
+            <Label htmlFor="linkInput">Bing or Google Maps directions link</Label>
             <Textarea
               id="linkInput"
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
-              placeholder="https://www.bing.com/maps/directions?..."
+              placeholder="https://www.bing.com/maps/directions?... or https://www.google.com/maps/dir/..."
               rows={3}
               className="break-all"
             />
-            <Button type="button" variant="outline" onClick={handleParseLink} disabled={!linkText.trim()} className="w-full">
-              Parse Link
+            <Button type="button" variant="outline" onClick={handleParseLink} disabled={!linkText.trim() || parsing} className="w-full">
+              {parsing ? "Looking up addresses..." : "Parse Link"}
             </Button>
           </TabsContent>
 

@@ -71,6 +71,81 @@ export function parseBingMapsLink(url: string): ParsedRoute | null {
 }
 
 /**
+ * Extracts the ordered list of stop addresses from a Google Maps
+ * directions link. Unlike a Bing link, Google never carries per-stop
+ * coordinates in the URL - callers need to geocode each returned address
+ * themselves, the same as the manual address-list path.
+ *
+ * Google encodes stops two different ways depending on how the link was
+ * shared:
+ *  - As URL path segments: /maps/dir/Addr+One/Addr+Two/Addr+Three/@lat,lng,z
+ *  - As query params: /maps/dir/?api=1&origin=...&destination=...&waypoints=A|B
+ *
+ * A trailing round-trip leg back to the first stop is dropped, and the
+ * first stop itself is treated as the pharmacy/pickup location and
+ * excluded from the returned delivery stops - both match parseBingMapsLink's
+ * conventions so the two can be used interchangeably by callers.
+ *
+ * Returns 'shortened' for a maps.app.goo.gl / goo.gl/maps link, since those
+ * only resolve via a server-side redirect and can't be read from the URL
+ * alone - callers should ask for the full, un-shortened link in that case.
+ * Returns null if the link isn't a recognizable Google directions link at
+ * all - callers should fall back to manual address entry.
+ */
+export function parseGoogleMapsLink(url: string): { deliveryStops: string[] } | "shortened" | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+
+  if (parsed.hostname.includes("goo.gl")) {
+    return "shortened"
+  }
+
+  if (!parsed.hostname.includes("google.")) return null
+  if (!parsed.pathname.includes("/maps/dir")) return null
+
+  let addresses: string[] = []
+
+  const origin = parsed.searchParams.get("origin")
+  const destination = parsed.searchParams.get("destination")
+  if (origin && destination) {
+    const waypoints = (parsed.searchParams.get("waypoints") || "")
+      .split("|")
+      .map((w) => w.trim())
+      .filter(Boolean)
+      .map((w) => decodeURIComponent(w.replace(/\+/g, " ")))
+    addresses = [
+      decodeURIComponent(origin.replace(/\+/g, " ")),
+      ...waypoints,
+      decodeURIComponent(destination.replace(/\+/g, " ")),
+    ]
+  } else {
+    const dirIndex = parsed.pathname.indexOf("/dir/")
+    if (dirIndex === -1) return null
+    const afterDir = parsed.pathname.slice(dirIndex + 5)
+    const segments = afterDir.split("/").filter(Boolean)
+    addresses = segments
+      .filter((seg) => !seg.startsWith("@") && !seg.startsWith("data="))
+      .map((seg) => decodeURIComponent(seg.replace(/\+/g, " ")))
+      .filter(Boolean)
+  }
+
+  if (addresses.length === 0) return null
+
+  if (addresses.length > 1) {
+    const first = addresses[0].trim().toLowerCase()
+    const last = addresses[addresses.length - 1].trim().toLowerCase()
+    if (first === last) addresses.pop()
+  }
+
+  const [, ...deliveryStops] = addresses
+  return { deliveryStops }
+}
+
+/**
  * Splits a plain pasted list of addresses (one per line) into stops with no
  * coordinates yet - the caller is expected to geocode these, since this
  * path has no coordinates embedded the way a Bing link does.

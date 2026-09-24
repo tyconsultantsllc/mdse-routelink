@@ -2,29 +2,19 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, Bell, AlertCircle, Mail, PackageCheck, Route as RouteIcon } from 'lucide-react'
+import { Package, Clock, CheckCircle, TrendingUp, LogOut, AlertCircle, Route as RouteIcon, Settings as SettingsIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from 'next/navigation'
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
-import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
+import { PharmacySettingsDialog } from "@/components/pharmacy-settings-dialog"
 import { PharmacyPackItemsDialog } from "@/components/pharmacy-pack-items-dialog"
 import { AddressWithUnit } from "@/components/address-with-unit"
 import { RequestRouteDialog } from "@/components/request-route-dialog"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
-import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
@@ -47,11 +37,9 @@ export default function PharmacyDashboard() {
   const [packItemsDeliveryName, setPackItemsDeliveryName] = useState("")
   const [userId, setUserId] = useState("")
   const [userEmail, setUserEmail] = useState("")
-  const [changeEmailOpen, setChangeEmailOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [deliveries, setDeliveries] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
-  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false)
-  const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
   const [requestRouteOpen, setRequestRouteOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [myReports, setMyReports] = useState<any[]>([])
@@ -321,45 +309,13 @@ export default function PharmacyDashboard() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => setChangeEmailOpen(true)}
+                    onClick={() => setSettingsOpen(true)}
                     className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
                   >
-                    <Mail className="h-4 w-4" />
+                    <SettingsIcon className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Change Email</TooltipContent>
-              </Tooltip>
-              <Dialog open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen}>
-                <DialogTrigger asChild>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9 md:h-10 md:w-10 bg-transparent">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Notification Settings</TooltipContent>
-                  </Tooltip>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>Notification Settings</DialogTitle>
-                    <DialogDescription>Manage how you receive delivery notifications</DialogDescription>
-                  </DialogHeader>
-                  <PharmacyNotificationSettings />
-                </DialogContent>
-              </Dialog>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 bg-transparent"
-                    onClick={() => setDeliverySettingsOpen(true)}
-                  >
-                    <PackageCheck className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Delivery Settings</TooltipContent>
+                <TooltipContent>Settings</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -588,8 +544,7 @@ export default function PharmacyDashboard() {
           onSuccess={fetchPharmacyDeliveries}
         />
       )}
-      <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={userEmail} />
-      <PharmacyDeliverySettings open={deliverySettingsOpen} onOpenChange={setDeliverySettingsOpen} />
+      <PharmacySettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} userId={userId} userEmail={userEmail} />
       <PharmacyPackItemsDialog
         open={!!packItemsRouteStopId}
         onOpenChange={(open) => !open && setPackItemsRouteStopId(null)}
