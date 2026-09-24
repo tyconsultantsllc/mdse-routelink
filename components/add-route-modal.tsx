@@ -11,6 +11,16 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
@@ -40,7 +50,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   const { toast } = useToast()
   const [routeName, setRouteName] = useState("")
   const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
   const [isOptimizerOpen, setIsOptimizerOpen] = useState(false)
   const [preparedStops, setPreparedStops] = useState<any[]>([])
@@ -62,6 +71,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   const [seriesEndDate, setSeriesEndDate] = useState("")
   const [seriesDriverId, setSeriesDriverId] = useState("")
   const [drivers, setDrivers] = useState<Array<{ id: string; name: string }>>([])
+  const [seriesConflicts, setSeriesConflicts] = useState<any[] | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -151,6 +161,10 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       return
     }
 
+    await submitRoute(false)
+  }
+
+  const submitRoute = async (confirmDespiteConflicts: boolean) => {
     setIsSubmitting(true)
     try {
       const startDate = initialDate
@@ -171,13 +185,20 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           driverId: seriesDriverId || null,
           priority,
           startTime: startTime || undefined,
-          endTime: endTime || undefined,
           estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
           daysOfWeek,
           seriesStartDate: startDate || new Date().toISOString().split('T')[0],
           seriesEndDate: seriesEndDate || undefined,
           stops: formattedStops,
+          confirmDespiteConflicts,
         })
+
+        if (result.conflicts.length > 0) {
+          setSeriesConflicts(result.conflicts)
+          setIsSubmitting(false)
+          return
+        }
+
         toast({
           title: "Recurring Route Created",
           description: `${routeName} was created for ${result.routes.length} date${result.routes.length !== 1 ? "s" : ""}.`,
@@ -188,7 +209,6 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           name: routeName,
           startDate,
           startTime: startTime || undefined,
-          endTime: endTime || undefined,
           estimatedDuration: optimizedDurationMinutes ?? (validStopCount > 0 ? recommendedDurationMinutes : undefined),
           priority,
           stops: formattedStops,
@@ -199,10 +219,10 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         })
       }
       
+      setSeriesConflicts(null)
       // Reset form
       setRouteName("")
       setStartTime("")
-      setEndTime("")
       setOptimizedDurationMinutes(null)
       setPriority("medium")
       setIsRecurring(false)
@@ -349,24 +369,15 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
 
   // Falls back to a simple 30-min-per-stop heuristic (matching the default
   // used everywhere else in the app) until the admin runs Optimize, which
-  // gives a real distance-based estimate instead.
+  // gives a real distance-based estimate instead. This estimate is what the
+  // server uses to derive end_time automatically - there's no separate end
+  // time to enter.
   const validStopCount = stops.filter((s) => s.pharmacyId && s.dropoffAddress).length
   const recommendedDurationMinutes = optimizedDurationMinutes ?? validStopCount * 30
   const recommendedDurationLabel =
     recommendedDurationMinutes >= 60
       ? `${Math.floor(recommendedDurationMinutes / 60)}h ${recommendedDurationMinutes % 60}m`
       : `${recommendedDurationMinutes} min`
-
-  const handleApplyRecommendedDuration = () => {
-    if (!startTime) return
-    const [hours, minutes] = startTime.split(':').map(Number)
-    const totalMinutes = hours * 60 + minutes + recommendedDurationMinutes
-    // Round to the nearest 15-minute increment, matching the time inputs
-    const roundedMinutes = Math.round(totalMinutes / 15) * 15
-    const endHours = Math.floor(roundedMinutes / 60) % 24
-    const endMins = roundedMinutes % 60
-    setEndTime(`${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`)
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -419,27 +430,15 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="startTime">Start Time</Label>
-              <Input
-                id="startTime"
-                type="time"
-                step={900}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="endTime">End Time</Label>
-              <Input
-                id="endTime"
-                type="time"
-                step={900}
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
+          <div>
+            <Label htmlFor="startTime">Start Time</Label>
+            <Input
+              id="startTime"
+              type="time"
+              step={900}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
           </div>
 
           <div className="border rounded-lg p-4 space-y-3">
@@ -510,14 +509,11 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           </div>
 
           {recommendedDurationMinutes > 0 && (
-            <div className="flex items-center justify-between rounded-md border bg-muted/50 px-3 py-2 text-sm">
+            <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
               <span className="text-muted-foreground">
-                Recommended duration: <span className="font-medium text-foreground">{recommendedDurationLabel}</span>
+                Estimated duration: <span className="font-medium text-foreground">{recommendedDurationLabel}</span>
                 {optimizedDurationMinutes == null && " (est. 30 min/stop - run Optimize for a distance-based estimate)"}
               </span>
-              <Button type="button" variant="outline" size="sm" onClick={handleApplyRecommendedDuration} disabled={!startTime}>
-                Apply to End Time
-              </Button>
             </div>
           )}
 
@@ -634,6 +630,34 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         stops={preparedStops}
         onOptimize={handleOptimizedStops}
       />
+
+      <AlertDialog open={!!seriesConflicts} onOpenChange={(o) => !o && setSeriesConflicts(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Scheduling Conflicts Found</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left">
+                <p>
+                  This driver already has routes overlapping {seriesConflicts?.length} of the dates in this series:
+                </p>
+                <ul className="text-sm max-h-40 overflow-y-auto space-y-1">
+                  {seriesConflicts?.map((c: any) => (
+                    <li key={c.label}>
+                      <span className="font-medium text-foreground">{c.label}</span> - conflicts with{" "}
+                      {c.conflictsWith.map((r: any) => r.name).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+                <p>Create the whole series anyway?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSeriesConflicts(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => submitRoute(true)}>Create Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

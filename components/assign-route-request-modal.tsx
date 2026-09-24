@@ -34,7 +34,6 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
   const [routeName, setRouteName] = useState("")
   const [priority, setPriority] = useState("medium")
   const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [conflictWarning, setConflictWarning] = useState<Array<{ id: number; name: string }> | null>(null)
 
@@ -45,7 +44,6 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
     setPriority(request.is_emergency ? "urgent" : "medium")
     setDriverId("")
     setStartTime("")
-    setEndTime("")
 
     const loadDrivers = async () => {
       setLoadingDrivers(true)
@@ -81,13 +79,8 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
         const today = new Date()
         const [h, m] = startTime.split(':')
         today.setHours(parseInt(h), parseInt(m), 0, 0)
-        let endTimestamp: string | undefined
-        if (endTime) {
-          const endDate = new Date()
-          const [eh, em] = endTime.split(':')
-          endDate.setHours(parseInt(eh), parseInt(em), 0, 0)
-          endTimestamp = endDate.toISOString()
-        }
+        const estimatedDuration = (request.stops?.length || 0) * 30
+        const endTimestamp = new Date(today.getTime() + estimatedDuration * 60000).toISOString()
 
         const { checkDriverConflicts } = await import("@/app/actions/data-actions")
         const conflicts = await checkDriverConflicts(driverId, [
@@ -115,7 +108,6 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
         routeName,
         priority,
         startTime: startTime || undefined,
-        endTime: endTime || undefined,
       })
       toast({ title: "Route created", description: "The request has been assigned and is now a live route." })
       setConflictWarning(null)
@@ -159,15 +151,15 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="startTime">Start Time</Label>
-              <Input id="startTime" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="endTime">End Time</Label>
-              <Input id="endTime" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </div>
+          <div>
+            <Label htmlFor="startTime">Start Time</Label>
+            <Input
+              id="startTime"
+              type="time"
+              step={900}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
           </div>
 
           <div>

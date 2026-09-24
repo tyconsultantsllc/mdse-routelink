@@ -44,7 +44,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
   const { toast } = useToast()
   const [routeName, setRouteName] = useState("")
   const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
   const [priority, setPriority] = useState<string>("medium")
   const [status, setStatus] = useState<string>("pending")
   const [stops, setStops] = useState<RouteStopForm[]>([])
@@ -79,12 +78,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
           const date = new Date(routeData.start_time)
           const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
           setStartTime(timeStr)
-        }
-
-        if (routeData.end_time) {
-          const date = new Date(routeData.end_time)
-          const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-          setEndTime(timeStr)
         }
         
         if (routeData.stops && routeData.stops.length > 0) {
@@ -175,7 +168,6 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
         {
           name: routeName,
           startTime: startTime || undefined,
-          endTime: endTime || undefined,
           priority,
           status,
           stops: stops.map((stop, index) => ({
@@ -277,27 +269,15 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="startTime">Start Time</Label>
-                <Input
-                  id="startTime"
-                  type="time"
-                  step={900}
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="endTime">End Time</Label>
-                <Input
-                  id="endTime"
-                  type="time"
-                  step={900}
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                />
-              </div>
+            <div>
+              <Label htmlFor="startTime">Start Time</Label>
+              <Input
+                id="startTime"
+                type="time"
+                step={900}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

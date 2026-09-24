@@ -510,7 +510,6 @@ interface RouteInsertData {
   name: string
   startDate?: string
   startTime?: string
-  endTime?: string
   estimatedDuration?: number
   priority: string
   driverId?: string | null
@@ -548,7 +547,11 @@ async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClien
   // day. It now always carries at least the date, defaulting the
   // time-of-day to midnight when none was given.
   const startTimeTimestamp = buildTimestamp(routeData.startTime) || baseDate.toISOString()
-  const endTimeTimestamp = buildTimestamp(routeData.endTime)
+  // No manual end time anymore - it's derived from the estimated duration so
+  // it stays accurate automatically instead of requiring separate entry.
+  const endTimeTimestamp = routeData.estimatedDuration
+    ? new Date(new Date(startTimeTimestamp).getTime() + routeData.estimatedDuration * 60000).toISOString()
+    : null
 
   const { data: route, error: routeError } = await supabase
     .from('routes')
@@ -589,7 +592,6 @@ export async function createRoute(routeData: {
   name: string
   startDate?: string
   startTime?: string
-  endTime?: string
   estimatedDuration?: number
   priority: string
   stops: Array<{
@@ -627,7 +629,6 @@ export async function createRouteSeries(input: {
   driverId?: string | null
   priority: string
   startTime?: string
-  endTime?: string
   estimatedDuration?: number
   daysOfWeek: number[]
   seriesStartDate: string
@@ -685,11 +686,16 @@ export async function createRouteSeries(input: {
       }
       return d.toISOString()
     }
-    const ranges = occurrenceDates.map((date) => ({
-      start: buildOccurrenceTimestamp(date, input.startTime),
-      end: input.endTime ? buildOccurrenceTimestamp(date, input.endTime) : undefined,
-      label: date,
-    }))
+    const ranges = occurrenceDates.map((date) => {
+      const rangeStart = buildOccurrenceTimestamp(date, input.startTime)
+      return {
+        start: rangeStart,
+        end: input.estimatedDuration
+          ? new Date(new Date(rangeStart).getTime() + input.estimatedDuration * 60000).toISOString()
+          : undefined,
+        label: date,
+      }
+    })
     const conflicts = await checkDriverConflicts(input.driverId, ranges)
     if (conflicts.length > 0) {
       return { conflicts, series: null, routes: [] }
@@ -705,7 +711,6 @@ export async function createRouteSeries(input: {
       driver_id: input.driverId || null,
       priority: input.priority,
       start_time_of_day: input.startTime || null,
-      end_time_of_day: input.endTime || null,
       estimated_duration: input.estimatedDuration || null,
       days_of_week: input.daysOfWeek,
       series_start_date: input.seriesStartDate,
@@ -723,7 +728,6 @@ export async function createRouteSeries(input: {
       name: input.name,
       startDate: date,
       startTime: input.startTime,
-      endTime: input.endTime,
       estimatedDuration: input.estimatedDuration,
       priority: input.priority,
       driverId: input.driverId,
@@ -1031,7 +1035,6 @@ export async function deleteRoute(routeId: number) {
 export async function updateRoute(routeId: number, routeData: {
   name: string
   startTime?: string
-  endTime?: string
   estimatedDuration?: number
   priority: string
   status: string
@@ -1055,7 +1058,11 @@ export async function updateRoute(routeId: number, routeData: {
   // being edited here. This previously always substituted today's date,
   // meaning editing a route's time silently moved its whole schedule to
   // today regardless of what date it was actually set for.
-  const { data: existingRoute } = await supabase.from('routes').select('start_time').eq('id', routeId).single()
+  const { data: existingRoute } = await supabase
+    .from('routes')
+    .select('start_time, estimated_duration')
+    .eq('id', routeId)
+    .single()
   const baseDate = existingRoute?.start_time ? new Date(existingRoute.start_time) : new Date()
 
   const buildTimestamp = (timeStr?: string) => {
@@ -1067,7 +1074,14 @@ export async function updateRoute(routeId: number, routeData: {
   }
 
   const startTimeTimestamp = buildTimestamp(routeData.startTime) || baseDate.toISOString()
-  const endTimeTimestamp = buildTimestamp(routeData.endTime)
+  // No manual end time anymore - derived from the estimated duration.
+  // This form doesn't let the admin edit duration, so fall back to the
+  // route's existing duration rather than wiping out an already-good
+  // end_time just because the name or stops changed.
+  const effectiveDuration = routeData.estimatedDuration ?? existingRoute?.estimated_duration ?? undefined
+  const endTimeTimestamp = effectiveDuration
+    ? new Date(new Date(startTimeTimestamp).getTime() + effectiveDuration * 60000).toISOString()
+    : null
   
   // Update the route
   const { error: routeError } = await supabase
@@ -1076,7 +1090,7 @@ export async function updateRoute(routeId: number, routeData: {
       name: routeData.name,
       start_time: startTimeTimestamp,
       end_time: endTimeTimestamp,
-      estimated_duration: routeData.estimatedDuration,
+      estimated_duration: effectiveDuration ?? null,
       priority: routeData.priority,
       status: routeData.status,
       updated_at: new Date().toISOString(),
@@ -1164,7 +1178,6 @@ export async function updateRouteOccurrence(
   routeData: {
     name: string
     startTime?: string
-    endTime?: string
     estimatedDuration?: number
     priority: string
     status: string
@@ -1220,7 +1233,6 @@ export async function updateRouteOccurrence(
       name: routeData.name,
       priority: routeData.priority,
       start_time_of_day: routeData.startTime || null,
-      end_time_of_day: routeData.endTime || null,
       estimated_duration: routeData.estimatedDuration || null,
       driver_id: routeData.driverId !== undefined ? routeData.driverId : undefined,
       stops_template: routeData.stops.map((s, i) => ({
@@ -1269,7 +1281,6 @@ export async function updateRouteOccurrence(
     const updatePayload: Record<string, any> = {
       name: routeData.name,
       priority: routeData.priority,
-      estimated_duration: routeData.estimatedDuration || null,
       updated_at: new Date().toISOString(),
     }
     if (routeData.driverId !== undefined) {
@@ -1277,20 +1288,28 @@ export async function updateRouteOccurrence(
       updatePayload.driver_confirmation = 'pending'
       updatePayload.confirmation_resolved_at = null
     }
-    // Re-derive each occurrence's own date, only changing the time-of-day
-    if (routeData.startTime || routeData.endTime) {
-      const { data: occRoute } = await supabase.from('routes').select('start_time').eq('id', occurrence.id).single()
-      const baseDate = occRoute?.start_time ? new Date(occRoute.start_time) : new Date()
-      const applyTime = (timeStr?: string) => {
-        if (!timeStr) return null
-        const d = new Date(baseDate)
-        const [h, m] = timeStr.split(':')
-        d.setHours(parseInt(h), parseInt(m), 0, 0)
-        return d.toISOString()
-      }
-      if (routeData.startTime) updatePayload.start_time = applyTime(routeData.startTime)
-      if (routeData.endTime) updatePayload.end_time = applyTime(routeData.endTime)
+    // Re-derive each occurrence's own date, only changing the time-of-day.
+    // end_time is always recomputed here from whichever start time and
+    // duration end up applying, so it can never drift out of sync.
+    const { data: occRoute } = await supabase
+      .from('routes')
+      .select('start_time, estimated_duration')
+      .eq('id', occurrence.id)
+      .single()
+    const baseDate = occRoute?.start_time ? new Date(occRoute.start_time) : new Date()
+    let effectiveStartTimestamp = baseDate.toISOString()
+    if (routeData.startTime) {
+      const d = new Date(baseDate)
+      const [h, m] = routeData.startTime.split(':')
+      d.setHours(parseInt(h), parseInt(m), 0, 0)
+      effectiveStartTimestamp = d.toISOString()
+      updatePayload.start_time = effectiveStartTimestamp
     }
+    const effectiveOccurrenceDuration = routeData.estimatedDuration ?? occRoute?.estimated_duration ?? undefined
+    updatePayload.estimated_duration = effectiveOccurrenceDuration ?? null
+    updatePayload.end_time = effectiveOccurrenceDuration
+      ? new Date(new Date(effectiveStartTimestamp).getTime() + effectiveOccurrenceDuration * 60000).toISOString()
+      : null
 
     await supabase.from('routes').update(updatePayload).eq('id', occurrence.id)
     updatedCount++
@@ -1459,7 +1478,6 @@ export async function assignRouteRequestToDriver(input: {
   routeName: string
   priority: string
   startTime?: string
-  endTime?: string
 }) {
   const { role } = await verifyAuth()
 
@@ -1494,7 +1512,9 @@ export async function assignRouteRequestToDriver(input: {
     name: input.routeName,
     priority: input.priority,
     startTime: input.startTime,
-    endTime: input.endTime,
+    // Same 30-min-per-stop default estimate used when adding a route
+    // manually, so end_time still gets derived sensibly here too.
+    estimatedDuration: stops.length * 30,
     stops,
   })
 
