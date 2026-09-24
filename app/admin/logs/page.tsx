@@ -15,6 +15,7 @@ import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { createClient } from "@/lib/supabase/client"
 import { getDeliveryLogs, getUsers, getPharmacies } from "@/app/actions/data-actions"
 import { RegionBadge } from "@/components/region-badge"
+import { ScanMismatchesCard } from "@/components/scan-mismatches-card"
 
 export default function DeliveryLogs() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -154,6 +155,7 @@ export default function DeliveryLogs() {
           <AdminHeader title="Delivery Logs" />
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <ScanMismatchesCard />
             {/* Search and Filters */}
             <Card className="p-6 mb-6">
               <div className="flex flex-col gap-4">

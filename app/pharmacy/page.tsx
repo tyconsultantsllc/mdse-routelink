@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
+import { PharmacyPackItemsDialog } from "@/components/pharmacy-pack-items-dialog"
 import { RequestRouteDialog } from "@/components/request-route-dialog"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
@@ -40,6 +41,9 @@ export default function PharmacyDashboard() {
   const [pharmacyName, setPharmacyName] = useState("")
   const [pharmacyId, setPharmacyId] = useState("")
   const [trackingEnabled, setTrackingEnabled] = useState(false)
+  const [barcodeScanningEnabled, setBarcodeScanningEnabled] = useState(false)
+  const [packItemsRouteStopId, setPackItemsRouteStopId] = useState<number | null>(null)
+  const [packItemsDeliveryName, setPackItemsDeliveryName] = useState("")
   const [userId, setUserId] = useState("")
   const [userEmail, setUserEmail] = useState("")
   const [changeEmailOpen, setChangeEmailOpen] = useState(false)
@@ -92,7 +96,7 @@ export default function PharmacyDashboard() {
       // Fetch routes with stops at this pharmacy
       const { data, error } = await supabase
         .from("route_stops")
-        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude, region, customer_tracking_enabled)")
+        .select("*, routes(*, drivers(*, users(first_name, last_name))), pharmacies(name, address, latitude, longitude, region, customer_tracking_enabled, barcode_scanning_enabled)")
         .eq("pharmacy_id", pharmacyUser.pharmacy_id)
         .order("created_at", { ascending: false })
 
@@ -100,6 +104,7 @@ export default function PharmacyDashboard() {
 
       if (data && data.length > 0) {
         setTrackingEnabled(!!data[0].pharmacies?.customer_tracking_enabled)
+        setBarcodeScanningEnabled(!!data[0].pharmacies?.barcode_scanning_enabled)
       }
 
       // Transform to Route format
@@ -463,6 +468,19 @@ export default function PharmacyDashboard() {
                             Copy Tracking Link
                           </Button>
                         )}
+                        {barcodeScanningEnabled && delivery.stops[0]?.id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 bg-transparent"
+                            onClick={() => {
+                              setPackItemsRouteStopId(delivery.stops[0].id)
+                              setPackItemsDeliveryName(delivery.name)
+                            }}
+                          >
+                            Scan Packages
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -567,6 +585,12 @@ export default function PharmacyDashboard() {
       )}
       <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={userEmail} />
       <PharmacyDeliverySettings open={deliverySettingsOpen} onOpenChange={setDeliverySettingsOpen} />
+      <PharmacyPackItemsDialog
+        open={!!packItemsRouteStopId}
+        onOpenChange={(open) => !open && setPackItemsRouteStopId(null)}
+        routeStopId={packItemsRouteStopId}
+        deliveryName={packItemsDeliveryName}
+      />
       <RequestRouteDialog
         open={requestRouteOpen}
         onOpenChange={setRequestRouteOpen}

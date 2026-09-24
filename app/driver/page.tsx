@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays } from 'lucide-react'
+import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays, ScanLine } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +20,7 @@ import { UnconfirmedRoutesAlert } from "@/components/unconfirmed-routes-alert"
 import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
+import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -44,6 +45,7 @@ interface RouteStop {
   status: "completed" | "pending" | "in-progress" | "failed" | "returned"
   failureReason?: string
   pharmacyReturnAddress?: string | null
+  barcodeScanningEnabled?: boolean
 }
 
 interface Route {
@@ -68,6 +70,7 @@ export default function DriverTrackingPage() {
   const [failModalOpen, setFailModalOpen] = useState(false)
   const [selectedStop, setSelectedStop] = useState<RouteStop | null>(null)
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
+  const [scanTarget, setScanTarget] = useState<{ stopId: number; stage: "pickup" | "delivery" } | null>(null)
   const [routes, setRoutes] = useState<Route[]>([])
   const [previewStops, setPreviewStops] = useState<
     { lat: number; lng: number; label: string; type: "pickup" | "dropoff" }[]
@@ -153,7 +156,7 @@ export default function DriverTrackingPage() {
 
       const { data, error } = await supabase
         .from("routes")
-        .select("*, route_stops(*, pharmacies(name, address, latitude, longitude))")
+        .select("*, route_stops(*, pharmacies(name, address, latitude, longitude, barcode_scanning_enabled))")
         .eq("driver_id", user.id)
         .order("created_at", { ascending: false })
         .order("stop_order", { foreignTable: "route_stops", ascending: true })
@@ -188,6 +191,7 @@ export default function DriverTrackingPage() {
               pickupAddress: stop.pharmacies?.address || "N/A",
               pickupLat: stop.pharmacies?.latitude ?? null,
               pickupLng: stop.pharmacies?.longitude ?? null,
+              barcodeScanningEnabled: !!stop.pharmacies?.barcode_scanning_enabled,
               dropoffAddress: stop.dropoff_address || "N/A",
               estimatedTime: stop.estimated_time || 30,
               // DB uses pending/picked_up/delivered/failed/returned; UI uses pending/in-progress/completed/failed/returned
@@ -310,6 +314,34 @@ export default function DriverTrackingPage() {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to start stop",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleScanResult = async (barcode: string) => {
+    if (!scanTarget) return
+    const { stopId, stage } = scanTarget
+    try {
+      const { recordScan } = await import("@/app/actions/data-actions")
+      const result = await recordScan(stopId, barcode, stage)
+      if (result.matched) {
+        toast({
+          title: "Package Matched",
+          description: `${result.scannedCount} of ${result.totalCount} package${result.totalCount !== 1 ? "s" : ""} scanned for this stop.`,
+        })
+      } else {
+        toast({
+          title: "Barcode Doesn't Match",
+          description: "This wasn't recorded as packed for this stop. You can still proceed with the delivery.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error recording scan:", error)
+      toast({
+        title: "Scan not recorded",
+        description: error instanceof Error ? error.message : "Could not record this scan",
         variant: "destructive",
       })
     }
@@ -900,15 +932,28 @@ export default function DriverTrackingPage() {
                                 </div>
                                 <div className="flex md:flex-col gap-2">
                                   {stop.status === "pending" && !hasInProgressStop && stop.id === nextPendingStop?.id && (
-                                    <Button
-                                      size="lg"
-                                      variant="outline"
-                                      onClick={() => handleStartStop(route, stop)}
-                                      className="min-h-[44px] flex-1 md:flex-none"
-                                    >
-                                      <Navigation className="mr-2 h-4 w-4" />
-                                      Start
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="lg"
+                                        variant="outline"
+                                        onClick={() => handleStartStop(route, stop)}
+                                        className="min-h-[44px] flex-1 md:flex-none"
+                                      >
+                                        <Navigation className="mr-2 h-4 w-4" />
+                                        Start
+                                      </Button>
+                                      {stop.barcodeScanningEnabled && (
+                                        <Button
+                                          size="lg"
+                                          variant="outline"
+                                          onClick={() => setScanTarget({ stopId: stop.id, stage: "pickup" })}
+                                          className="min-h-[44px] flex-1 md:flex-none"
+                                        >
+                                          <ScanLine className="mr-2 h-4 w-4" />
+                                          Scan
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                   {stop.status === "in-progress" && (
                                     <>
@@ -928,6 +973,17 @@ export default function DriverTrackingPage() {
                                       >
                                         Mark Failed
                                       </Button>
+                                      {stop.barcodeScanningEnabled && (
+                                        <Button
+                                          size="lg"
+                                          variant="outline"
+                                          onClick={() => setScanTarget({ stopId: stop.id, stage: "delivery" })}
+                                          className="min-h-[44px] flex-1 md:flex-none"
+                                        >
+                                          <ScanLine className="mr-2 h-4 w-4" />
+                                          Scan
+                                        </Button>
+                                      )}
                                     </>
                                   )}
                                   {stop.status === "completed" && (
@@ -975,6 +1031,13 @@ export default function DriverTrackingPage() {
         onOpenChange={setFailModalOpen}
         pharmacyName={selectedStop?.pharmacyName || ""}
         onConfirm={handleDeliveryFailed}
+      />
+      <BarcodeScannerDialog
+        open={!!scanTarget}
+        onOpenChange={(open) => !open && setScanTarget(null)}
+        onScan={handleScanResult}
+        title={scanTarget?.stage === "pickup" ? "Scan Package - Pickup" : "Scan Package - Delivery"}
+        description="Confirms you have the right package for this stop"
       />
 
       {driverId && <DriverMessagingWidget driverId={driverId} />}

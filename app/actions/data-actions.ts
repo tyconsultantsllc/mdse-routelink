@@ -354,6 +354,291 @@ export async function updateOwnPharmacyTrackingEnabled(enabled: boolean) {
   return { success: true }
 }
 
+export async function getOwnPharmacyBarcodeScanningEnabled() {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id, pharmacies(barcode_scanning_enabled)')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const pharmacyRow = Array.isArray(pharmacyUser?.pharmacies) ? pharmacyUser.pharmacies[0] : pharmacyUser?.pharmacies
+  return !!pharmacyRow?.barcode_scanning_enabled
+}
+
+export async function updateOwnPharmacyBarcodeScanningEnabled(enabled: boolean) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const { data, error } = await supabase
+    .from('pharmacies')
+    .update({ barcode_scanning_enabled: enabled })
+    .eq('id', pharmacyUser.pharmacy_id)
+    .select()
+
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('Update did not match any pharmacy record')
+
+  return { success: true }
+}
+
+/**
+ * Records one physical package as packed for a stop, from a pharmacy-side
+ * scan. A stop can have more than one package, so each scan just adds
+ * another row rather than replacing anything. Verifies the stop actually
+ * belongs to this pharmacy before inserting.
+ */
+export async function recordPackedItem(routeStopId: number, barcode: string) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select('id, pharmacy_id')
+    .eq('id', routeStopId)
+    .single()
+
+  if (stopError) throw stopError
+  if (stop.pharmacy_id !== pharmacyUser?.pharmacy_id) {
+    throw new Error('This delivery does not belong to your pharmacy')
+  }
+
+  const { data, error } = await supabase
+    .from('stop_items')
+    .insert({ route_stop_id: routeStopId, barcode })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Undoes a mis-scan during packing - e.g. the wrong label was scanned by
+ * mistake and needs to be removed before the route goes out.
+ */
+export async function removePackedItem(itemId: string) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const { data: item, error: itemError } = await supabase
+    .from('stop_items')
+    .select('id, route_stops(pharmacy_id)')
+    .eq('id', itemId)
+    .single()
+
+  if (itemError) throw itemError
+  const stopRow: any = Array.isArray((item as any).route_stops) ? (item as any).route_stops[0] : (item as any).route_stops
+  if (stopRow?.pharmacy_id !== pharmacyUser?.pharmacy_id) {
+    throw new Error('This item does not belong to your pharmacy')
+  }
+
+  const { error } = await supabase.from('stop_items').delete().eq('id', itemId)
+  if (error) throw error
+
+  return { success: true }
+}
+
+/**
+ * Returns the expected/scanned packages for a stop. Used by both the
+ * pharmacy (while packing) and the driver (while picking up or
+ * delivering) - each is checked for its own kind of ownership rather than
+ * sharing one check.
+ */
+export async function getStopItems(routeStopId: number) {
+  const { userId, role } = await verifyAuth()
+  const supabase = createAdminClient()
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select('id, pharmacy_id, routes(driver_id)')
+    .eq('id', routeStopId)
+    .single()
+
+  if (stopError) throw stopError
+
+  if (role === 'pharmacy') {
+    const { data: pharmacyUser } = await supabase
+      .from('pharmacy_users')
+      .select('pharmacy_id')
+      .eq('id', userId)
+      .single()
+    if (stop.pharmacy_id !== pharmacyUser?.pharmacy_id) {
+      throw new Error('This delivery does not belong to your pharmacy')
+    }
+  } else if (role === 'driver') {
+    const routeRow: any = Array.isArray((stop as any).routes) ? (stop as any).routes[0] : (stop as any).routes
+    if (routeRow?.driver_id !== userId) {
+      throw new Error('This delivery is not assigned to you')
+    }
+  } else if (role !== 'admin') {
+    throw new Error('Forbidden')
+  }
+
+  const { data: items, error } = await supabase
+    .from('stop_items')
+    .select('*')
+    .eq('route_stop_id', routeStopId)
+    .order('packed_at', { ascending: true })
+
+  if (error) throw error
+  return items || []
+}
+
+/**
+ * Driver-side scan at pickup or delivery. Tries to match the scanned
+ * barcode against a packed item for this stop that hasn't yet reached this
+ * stage; if found, marks it. If not, logs a mismatch for admin visibility.
+ * Scanning is advisory only - it never throws just because of a mismatch,
+ * so the driver's existing pickup/delivery buttons keep working regardless
+ * of what this returns.
+ */
+export async function recordScan(routeStopId: number, barcode: string, stage: 'pickup' | 'delivery') {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'driver') {
+    throw new Error('Forbidden: driver account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select('id, routes(driver_id)')
+    .eq('id', routeStopId)
+    .single()
+
+  if (stopError) throw stopError
+  const routeRow: any = Array.isArray((stop as any).routes) ? (stop as any).routes[0] : (stop as any).routes
+  if (routeRow?.driver_id !== userId) {
+    throw new Error('This delivery is not assigned to you')
+  }
+
+  const stageColumn = stage === 'pickup' ? 'picked_up_at' : 'delivered_at'
+
+  const { data: items, error: itemsError } = await supabase
+    .from('stop_items')
+    .select('*')
+    .eq('route_stop_id', routeStopId)
+
+  if (itemsError) throw itemsError
+
+  const match = (items || []).find((i: any) => i.barcode === barcode && !i[stageColumn])
+
+  if (match) {
+    const { error: updateError } = await supabase
+      .from('stop_items')
+      .update({ [stageColumn]: new Date().toISOString() })
+      .eq('id', match.id)
+    if (updateError) throw updateError
+  } else {
+    await supabase.from('scan_mismatches').insert({
+      route_stop_id: routeStopId,
+      stage,
+      scanned_barcode: barcode,
+      driver_id: userId,
+    })
+  }
+
+  const { data: updatedItems } = await supabase.from('stop_items').select('*').eq('route_stop_id', routeStopId)
+  const totalCount = (updatedItems || []).length
+  const scannedCount = (updatedItems || []).filter((i: any) => !!i[stageColumn as keyof typeof i]).length
+
+  return { matched: !!match, totalCount, scannedCount }
+}
+
+/**
+ * Admin-facing review list of every scan that didn't match what was
+ * packed, most recent first - regardless of whether the driver proceeded
+ * anyway, since even an abandoned mismatch is useful to see a pattern in.
+ */
+export async function getScanMismatches() {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('scan_mismatches')
+    .select(
+      '*, route_stops(dropoff_address, routes(name), pharmacies(name)), drivers(users(first_name, last_name))',
+    )
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (error) throw error
+
+  return (data || []).map((m: any) => {
+    const stopRow = Array.isArray(m.route_stops) ? m.route_stops[0] : m.route_stops
+    const routeRow = Array.isArray(stopRow?.routes) ? stopRow.routes[0] : stopRow?.routes
+    const pharmacyRow = Array.isArray(stopRow?.pharmacies) ? stopRow.pharmacies[0] : stopRow?.pharmacies
+    const driverRow = Array.isArray(m.drivers) ? m.drivers[0] : m.drivers
+    const userRow = Array.isArray(driverRow?.users) ? driverRow.users[0] : driverRow?.users
+    return {
+      id: m.id,
+      stage: m.stage as 'pickup' | 'delivery',
+      scannedBarcode: m.scanned_barcode,
+      createdAt: m.created_at,
+      routeName: routeRow?.name || 'Unknown route',
+      pharmacyName: pharmacyRow?.name || 'Unknown pharmacy',
+      dropoffAddress: stopRow?.dropoff_address || '',
+      driverName: userRow ? `${userRow.first_name} ${userRow.last_name}` : 'Unknown driver',
+    }
+  })
+}
+
 export async function updateOwnProfile(updates: {
   firstName?: string
   lastName?: string

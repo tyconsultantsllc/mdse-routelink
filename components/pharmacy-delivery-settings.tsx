@@ -17,6 +17,7 @@ export function PharmacyDeliverySettings({ open, onOpenChange }: PharmacyDeliver
   const { toast } = useToast()
   const [mode, setMode] = useState<"batch" | "per_item">("batch")
   const [trackingEnabled, setTrackingEnabled] = useState(false)
+  const [barcodeScanningEnabled, setBarcodeScanningEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -25,15 +26,19 @@ export function PharmacyDeliverySettings({ open, onOpenChange }: PharmacyDeliver
     const load = async () => {
       setLoading(true)
       try {
-        const { getOwnPharmacyReturnSignatureMode, getOwnPharmacyTrackingEnabled } = await import(
-          "@/app/actions/data-actions"
-        )
-        const [currentMode, currentTracking] = await Promise.all([
+        const {
+          getOwnPharmacyReturnSignatureMode,
+          getOwnPharmacyTrackingEnabled,
+          getOwnPharmacyBarcodeScanningEnabled,
+        } = await import("@/app/actions/data-actions")
+        const [currentMode, currentTracking, currentScanning] = await Promise.all([
           getOwnPharmacyReturnSignatureMode(),
           getOwnPharmacyTrackingEnabled(),
+          getOwnPharmacyBarcodeScanningEnabled(),
         ])
         setMode(currentMode)
         setTrackingEnabled(currentTracking)
+        setBarcodeScanningEnabled(currentScanning)
       } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" })
       } finally {
@@ -46,12 +51,15 @@ export function PharmacyDeliverySettings({ open, onOpenChange }: PharmacyDeliver
   const handleSave = async () => {
     setSaving(true)
     try {
-      const { updateOwnPharmacyReturnSignatureMode, updateOwnPharmacyTrackingEnabled } = await import(
-        "@/app/actions/data-actions"
-      )
+      const {
+        updateOwnPharmacyReturnSignatureMode,
+        updateOwnPharmacyTrackingEnabled,
+        updateOwnPharmacyBarcodeScanningEnabled,
+      } = await import("@/app/actions/data-actions")
       await Promise.all([
         updateOwnPharmacyReturnSignatureMode(mode),
         updateOwnPharmacyTrackingEnabled(trackingEnabled),
+        updateOwnPharmacyBarcodeScanningEnabled(barcodeScanningEnabled),
       ])
       toast({ title: "Saved", description: "Your delivery settings have been updated." })
       onOpenChange(false)
@@ -84,6 +92,20 @@ export function PharmacyDeliverySettings({ open, onOpenChange }: PharmacyDeliver
                 </p>
               </div>
               <Switch id="tracking-toggle" checked={trackingEnabled} onCheckedChange={setTrackingEnabled} />
+            </div>
+
+            <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+              <div>
+                <Label htmlFor="scanning-toggle" className="font-medium cursor-pointer">
+                  Barcode Scanning
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Let your staff scan each package's existing label while packing, and let drivers scan at pickup
+                  and delivery to double-check they have the right package. This is an extra check alongside the
+                  normal buttons - it never blocks anyone from proceeding.
+                </p>
+              </div>
+              <Switch id="scanning-toggle" checked={barcodeScanningEnabled} onCheckedChange={setBarcodeScanningEnabled} />
             </div>
 
             <div className="space-y-3">
