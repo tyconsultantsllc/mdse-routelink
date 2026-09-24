@@ -97,6 +97,12 @@ export default function RouteManagement() {
             priority: r.priority || "medium",
             status: r.status || "pending",
             region: getRouteRegion(stops),
+            // RouteMap needs the real stops (with each stop's pharmacy
+            // coordinates) to draw a route's line at all - without this,
+            // every route was silently skipped when drawing, which is why
+            // "View on Map" looked like it did nothing: there was never
+            // anything on the map to highlight in the first place.
+            route_stops: stops,
           }
         }) || []
       )
