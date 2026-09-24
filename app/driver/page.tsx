@@ -21,6 +21,7 @@ import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog"
+import { AddressWithUnit } from "@/components/address-with-unit"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -767,7 +768,9 @@ export default function DriverTrackingPage() {
                                   <p className="text-sm text-muted-foreground">Next Stop</p>
                                   <p className="font-medium">{nextStop.pharmacyName}</p>
                                   <p className="text-xs text-muted-foreground mt-1">Pickup: {nextStop.pickupAddress}</p>
-                                  <p className="text-xs text-muted-foreground">Dropoff: {nextStop.dropoffAddress}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Dropoff: <AddressWithUnit address={nextStop.dropoffAddress} size="sm" />
+                                  </p>
                                 </div>
                                 <Clock className="text-primary" />
                               </div>
@@ -905,7 +908,9 @@ export default function DriverTrackingPage() {
                                       <MapPin className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                       <div className="flex-1">
                                         <p className="text-muted-foreground text-xs">Dropoff</p>
-                                        <p className="text-foreground">{stop.dropoffAddress}</p>
+                                        <p className="text-foreground">
+                                          <AddressWithUnit address={stop.dropoffAddress} />
+                                        </p>
                                         {stop.dropoffAddress !== "N/A" && (
                                           <a
                                             href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.dropoffAddress)}`}

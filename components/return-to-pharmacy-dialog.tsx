@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Package, MapPin } from "lucide-react"
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad"
 import { useToast } from "@/hooks/use-toast"
+import { AddressWithUnit } from "@/components/address-with-unit"
 
 interface ReturnStop {
   stopId: number
@@ -193,7 +194,9 @@ export function ReturnToPharmacyDialog({
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {selectedGroup.stops.map((s) => (
                   <div key={s.stopId} className="text-sm p-2 bg-muted/50 rounded">
-                    <p className="font-medium">{s.dropoffAddress}</p>
+                    <p className="font-medium">
+                      <AddressWithUnit address={s.dropoffAddress} size="sm" />
+                    </p>
                     {s.failureReason && <p className="text-xs text-muted-foreground">{s.failureReason}</p>}
                   </div>
                 ))}
@@ -231,7 +234,9 @@ export function ReturnToPharmacyDialog({
               </p>
             </div>
             <div className="text-sm p-3 bg-muted/50 rounded">
-              <p className="font-medium">{selectedGroup.stops[itemIndex].dropoffAddress}</p>
+              <p className="font-medium">
+                <AddressWithUnit address={selectedGroup.stops[itemIndex].dropoffAddress} size="sm" />
+              </p>
               {selectedGroup.stops[itemIndex].failureReason && (
                 <p className="text-xs text-muted-foreground">{selectedGroup.stops[itemIndex].failureReason}</p>
               )}

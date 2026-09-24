@@ -20,6 +20,7 @@ import {
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
 import { PharmacyPackItemsDialog } from "@/components/pharmacy-pack-items-dialog"
+import { AddressWithUnit } from "@/components/address-with-unit"
 import { RequestRouteDialog } from "@/components/request-route-dialog"
 import { AnnouncementBanner } from "@/components/announcement-banner"
 import { PharmacyReportModal } from "@/components/pharmacy-report-modal"
@@ -448,7 +449,9 @@ export default function PharmacyDashboard() {
                         <div className="text-xs md:text-sm text-muted-foreground space-y-1">
                           <p>Driver: {delivery.assignedDriverName}</p>
                           <p className="break-words">Pickup: {delivery.stops[0].pickupAddress}</p>
-                          <p className="break-words">Dropoff: {delivery.stops[0].dropoffAddress}</p>
+                          <p className="break-words">
+                            Dropoff: <AddressWithUnit address={delivery.stops[0].dropoffAddress} size="sm" />
+                          </p>
                           <p>
                             Estimated Time: {delivery.startTime} - {delivery.endTime}
                           </p>
@@ -561,7 +564,9 @@ export default function PharmacyDashboard() {
                         </div>
                         <div className="text-xs md:text-sm text-muted-foreground space-y-1">
                           <p>Driver: {delivery.assignedDriverName}</p>
-                          <p className="break-words">Dropoff: {delivery.stops[0].dropoffAddress}</p>
+                          <p className="break-words">
+                            Dropoff: <AddressWithUnit address={delivery.stops[0].dropoffAddress} size="sm" />
+                          </p>
                           <p>Completed: {delivery.startTime}</p>
                         </div>
                       </div>

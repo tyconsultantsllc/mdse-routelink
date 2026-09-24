@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { AddressWithUnit } from "@/components/address-with-unit"
 
 interface DeliveryDetailsModalProps {
   open: boolean
@@ -73,7 +74,9 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
 
           <div>
             <p className="text-xs text-muted-foreground">Dropoff Address</p>
-            <p className="font-medium">{delivery.dropoffAddress}</p>
+            <p className="font-medium">
+              <AddressWithUnit address={delivery.dropoffAddress} />
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
