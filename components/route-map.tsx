@@ -5,6 +5,20 @@ import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { geocodeAddress } from "@/lib/geocode"
 
+// Leaflet's default marker icon points at image paths that only resolve
+// correctly when served from Leaflet's own folder layout - bundled through
+// webpack/Next.js like this, they 404 instead (confirmed in production:
+// GET /admin/marker-icon-2x.png and /admin/marker-shadow.png both 404,
+// resolved relative to the current page's own URL rather than to Leaflet's
+// assets). This is a well-known Leaflet + webpack incompatibility; pointing
+// the default icon at Leaflet's own CDN-hosted images is the standard fix.
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
 interface RouteStop {
   id?: string
   stop_order: number
@@ -57,7 +71,25 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map)
 
+    // Leaflet measures its container's size once, at init. In a flex/scroll
+    // layout like this admin page, the container can still be mid-layout
+    // (e.g. 0px tall) at that exact moment, which leaves Leaflet's internal
+    // tile grid permanently wrong - no tiles, no visible map - until
+    // something forces it to re-measure. invalidateSize() is that re-measure;
+    // it's called a few times (next frame, then again after a short delay)
+    // to catch layout that settles slightly late, and a ResizeObserver keeps
+    // it correct if the surrounding layout changes afterward (e.g. a sidebar
+    // toggling).
+    const invalidate = () => mapRef.current?.invalidateSize()
+    requestAnimationFrame(invalidate)
+    const timer = setTimeout(invalidate, 300)
+
+    const resizeObserver = new ResizeObserver(() => invalidate())
+    resizeObserver.observe(containerRef.current)
+
     return () => {
+      clearTimeout(timer)
+      resizeObserver.disconnect()
       map.remove()
       mapRef.current = null
       routeLayersRef.current.clear()
