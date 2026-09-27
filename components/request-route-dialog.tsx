@@ -1,15 +1,27 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertTriangle, MapPin, Star, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface RequestRouteDialogProps {
   open: boolean
@@ -33,12 +45,37 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
   const [isEmergency, setIsEmergency] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [drivers, setDrivers] = useState<Array<{ id: string; name: string; region: string | null }>>([])
+  const [loadingDrivers, setLoadingDrivers] = useState(false)
+  const [driverId, setDriverId] = useState("")
+  const [startTime, setStartTime] = useState("")
+  const [conflictWarning, setConflictWarning] = useState<Array<{ id: number; name: string }> | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const loadDrivers = async () => {
+      setLoadingDrivers(true)
+      try {
+        const { getDriversForPharmacyAssignment } = await import("@/app/actions/data-actions")
+        const data = await getDriversForPharmacyAssignment()
+        setDrivers(data)
+      } catch (error: any) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      } finally {
+        setLoadingDrivers(false)
+      }
+    }
+    loadDrivers()
+  }, [open])
 
   const resetAndClose = () => {
     setLinkText("")
     setManualText("")
     setPreviewStops([])
     setIsEmergency(false)
+    setDriverId("")
+    setStartTime("")
+    setConflictWarning(null)
     onOpenChange(false)
   }
 
@@ -133,22 +170,51 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
     setPreviewStops((prev) => prev.map((s, i) => (i === index ? { ...s, requestedTime: time } : s)))
   }
 
+  const buildStopsInput = () =>
+    previewStops.map((s) => ({
+      address: s.address,
+      lat: s.lat,
+      lng: s.lng,
+      isPriority: s.isPriority || false,
+      requestedTime: s.isPriority ? s.requestedTime || undefined : undefined,
+    }))
+
   const handleSubmit = async () => {
     if (previewStops.length === 0) {
       toast({ title: "No stops to submit", description: "Parse a link or enter addresses first.", variant: "destructive" })
       return
     }
+
+    if (driverId) {
+      try {
+        if (startTime) {
+          const today = new Date()
+          const [h, m] = startTime.split(':')
+          today.setHours(parseInt(h), parseInt(m), 0, 0)
+          const estimatedDuration = previewStops.length * 30
+          const endTimestamp = new Date(today.getTime() + estimatedDuration * 60000).toISOString()
+
+          const { checkDriverConflicts } = await import("@/app/actions/data-actions")
+          const conflicts = await checkDriverConflicts(driverId, [
+            { start: today.toISOString(), end: endTimestamp, label: "This route" },
+          ])
+          if (conflicts.length > 0) {
+            setConflictWarning(conflicts[0].conflictsWith)
+            return
+          }
+        }
+        await submitWithDriver()
+      } catch (error: any) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      }
+      return
+    }
+
     setSubmitting(true)
     try {
       const { createRouteRequest } = await import("@/app/actions/data-actions")
       await createRouteRequest({
-        stops: previewStops.map((s) => ({
-          address: s.address,
-          lat: s.lat,
-          lng: s.lng,
-          isPriority: s.isPriority || false,
-          requestedTime: s.isPriority ? s.requestedTime || undefined : undefined,
-        })),
+        stops: buildStopsInput(),
         isEmergency,
         sourceLink: linkText.trim() || null,
       })
@@ -158,6 +224,31 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
           ? "Marked as emergency - dispatch has been notified."
           : "An admin will assign a driver shortly.",
       })
+      onSubmitted()
+      resetAndClose()
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const submitWithDriver = async () => {
+    setSubmitting(true)
+    try {
+      const { pharmacyCreateRouteWithDriver } = await import("@/app/actions/data-actions")
+      await pharmacyCreateRouteWithDriver({
+        stops: buildStopsInput(),
+        driverId,
+        startTime: startTime || undefined,
+        isEmergency,
+        sourceLink: linkText.trim() || null,
+      })
+      toast({
+        title: "Route created",
+        description: "The route has been created and assigned to the selected driver.",
+      })
+      setConflictWarning(null)
       onSubmitted()
       resetAndClose()
     } catch (error: any) {
@@ -298,10 +389,61 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
           </Label>
         </div>
 
+        <div className="space-y-3 pt-2 border-t">
+          <div>
+            <Label htmlFor="driver">Assign a driver yourself (optional)</Label>
+            <Select value={driverId} onValueChange={setDriverId} disabled={loadingDrivers}>
+              <SelectTrigger id="driver">
+                <SelectValue placeholder={loadingDrivers ? "Loading drivers..." : "Leave unassigned for an admin to pick"} />
+              </SelectTrigger>
+              <SelectContent>
+                {drivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              {driverId
+                ? "This will create the route immediately and assign it to that driver."
+                : "Leave this blank to send a request an admin will review and assign instead."}
+            </p>
+          </div>
+
+          {driverId && (
+            <div>
+              <Label htmlFor="requestStartTime">Start Time</Label>
+              <Input
+                id="requestStartTime"
+                type="time"
+                step={900}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
         <Button onClick={handleSubmit} disabled={submitting || previewStops.length === 0} className="w-full">
-          {submitting ? "Submitting..." : "Send Request"}
+          {submitting ? (driverId ? "Creating Route..." : "Submitting...") : driverId ? "Create Route & Assign" : "Send Request"}
         </Button>
       </DialogContent>
+
+      <AlertDialog open={!!conflictWarning} onOpenChange={(o) => !o && setConflictWarning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Scheduling Conflict</AlertDialogTitle>
+            <AlertDialogDescription>
+              This driver is already assigned to a route that overlaps this time: {conflictWarning?.map((c) => c.name).join(", ")}. Assign anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConflictWarning(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={submitWithDriver}>Assign Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

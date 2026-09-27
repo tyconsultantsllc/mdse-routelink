@@ -3,11 +3,12 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { MapIcon, Plus, X, Sparkles, Star } from 'lucide-react'
+import { MapIcon, Plus, X, Sparkles, Star, History, Link2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -26,6 +27,7 @@ import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
 import { geocodeAddress } from "@/lib/geocode"
 import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
+import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
 
 interface AddRouteModalProps {
   open: boolean
@@ -76,6 +78,34 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   const [seriesDriverId, setSeriesDriverId] = useState("")
   const [drivers, setDrivers] = useState<Array<{ id: string; name: string }>>([])
   const [seriesConflicts, setSeriesConflicts] = useState<any[] | null>(null)
+  const [lastDriverByStop, setLastDriverByStop] = useState<Record<number, { driverName: string; deliveredAt: string | null } | null>>({})
+  const [showLinkPaste, setShowLinkPaste] = useState(false)
+  const [linkPastePharmacyId, setLinkPastePharmacyId] = useState("")
+  const [linkPasteText, setLinkPasteText] = useState("")
+
+  // Looks up, per stop, who last actually delivered to that same
+  // pharmacy+address pair - debounced so it doesn't fire a query on every
+  // keystroke while an address is still being typed/autocompleted.
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      const { getLastDriverForStop } = await import('@/app/actions/data-actions')
+      const results = await Promise.all(
+        stops.map(async (stop, index) => {
+          if (!stop.pharmacyId || !stop.dropoffAddress?.trim()) return [index, null] as const
+          try {
+            const info = await getLastDriverForStop(stop.pharmacyId, stop.dropoffAddress)
+            return [index, info] as const
+          } catch {
+            return [index, null] as const
+          }
+        }),
+      )
+      setLastDriverByStop(Object.fromEntries(results))
+    }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stops.map((s) => `${s.pharmacyId}|${s.dropoffAddress}`).join('||')])
 
   useEffect(() => {
     if (open) {
@@ -155,6 +185,93 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
     const newStops = [...stops]
     newStops[index] = { ...newStops[index], isPriority }
     setStops(newStops)
+  }
+
+  const formatLastDeliveredDate = (iso: string) => {
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  // Turns a pasted Bing/Google Maps directions link (or a plain list of
+  // addresses) into stops for the pharmacy picked in the link-paste panel,
+  // the same parsing pharmacies already use in their own Request-a-Route
+  // dialog. Unlike that dialog, every stop here needs a pharmacyId, so the
+  // admin picks one pharmacy up front and every parsed address becomes a
+  // dropoff under it.
+  const handleParseLinkForStops = async () => {
+    const pharmacy = pharmacies.find((p) => p.id === linkPastePharmacyId)
+    if (!pharmacy) {
+      toast({ title: "Select a pharmacy first", description: "Pick which pharmacy these stops are picked up from.", variant: "destructive" })
+      return
+    }
+    const text = linkPasteText.trim()
+    if (!text) {
+      toast({ title: "Nothing to parse", description: "Paste a link or type addresses first.", variant: "destructive" })
+      return
+    }
+
+    const buildStops = (addresses: string[]): RouteStopForm[] =>
+      addresses.map((address) => ({
+        pharmacyId: pharmacy.id,
+        pharmacyName: pharmacy.name,
+        pickupAddress: pharmacy.address,
+        dropoffAddress: address,
+        isPriority: false,
+        designatedTime: "",
+      }))
+
+    const appendStops = (newStops: RouteStopForm[]) => {
+      setStops((prev) => {
+        // Don't leave a dangling blank row in front of the parsed stops.
+        const isBlank = (s: RouteStopForm) => !s.pharmacyId && !s.dropoffAddress
+        const base = prev.length === 1 && isBlank(prev[0]) ? [] : prev
+        return [...base, ...newStops]
+      })
+      toast({ title: "Stops added", description: `Added ${newStops.length} stop(s) from ${pharmacy.name}.` })
+      setShowLinkPaste(false)
+      setLinkPasteText("")
+    }
+
+    const bingParsed = parseBingMapsLink(text)
+    if (bingParsed) {
+      appendStops(buildStops(bingParsed.deliveryStops.map((s) => s.address)))
+      return
+    }
+
+    const googleParsed = parseGoogleMapsLink(text)
+    if (googleParsed === "shortened") {
+      toast({
+        title: "That's a shortened Google Maps link",
+        description: "Open it and paste the full address bar link instead - a shortened link can't be read directly.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    let addresses: string[] | null = null
+    if (googleParsed) {
+      if (googleParsed.deliveryStops.length === 0) {
+        toast({ title: "No delivery stops found", description: "That link only had one address.", variant: "destructive" })
+        return
+      }
+      addresses = googleParsed.deliveryStops
+    } else {
+      const manual = parseManualAddressList(text)
+      if (manual.length === 0) {
+        toast({
+          title: "Couldn't read that",
+          description: "That doesn't look like a Bing or Google Maps directions link, and no addresses were found either.",
+          variant: "destructive",
+        })
+        return
+      }
+      addresses = manual
+    }
+
+    // Coordinates for these stops are picked up later, the same way any
+    // manually-typed stop's address gets resolved - via the address
+    // autocomplete field, or when "Optimize" is run.
+    appendStops(buildStops(addresses))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -584,12 +701,63 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                   <Sparkles className="h-4 w-4 mr-2" />
                   {isPreparingOptimizer ? "Looking up locations..." : "Optimize"}
                 </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowLinkPaste((v) => !v)}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Paste Link
+                </Button>
                 <Button type="button" variant="outline" size="sm" onClick={addStop}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Stop
                 </Button>
               </div>
             </div>
+
+            {showLinkPaste && (
+              <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                <div>
+                  <Label htmlFor="linkPastePharmacy">Pharmacy (pickup for these stops) *</Label>
+                  <Select value={linkPastePharmacyId} onValueChange={setLinkPastePharmacyId}>
+                    <SelectTrigger id="linkPastePharmacy">
+                      <SelectValue placeholder="Select pharmacy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pharmacies.map((pharmacy) => (
+                        <SelectItem key={pharmacy.id} value={pharmacy.id}>
+                          {pharmacy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="linkPasteText">Bing/Google Maps directions link, or addresses (one per line)</Label>
+                  <Textarea
+                    id="linkPasteText"
+                    value={linkPasteText}
+                    onChange={(e) => setLinkPasteText(e.target.value)}
+                    placeholder={"https://www.bing.com/maps/directions?... or\n123 Main St, City, ST 00000\n456 Oak Ave, City, ST 00000"}
+                    rows={3}
+                    className="break-all"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={handleParseLinkForStops} disabled={!linkPasteText.trim() || !linkPastePharmacyId}>
+                    Parse & Add Stops
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowLinkPaste(false)
+                      setLinkPasteText("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {stops.map((stop, index) => (
               <div key={index} className="border rounded-lg p-4 space-y-3 relative">
@@ -687,6 +855,13 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                         className="w-36 h-8"
                       />
                     </div>
+                  )}
+                  {lastDriverByStop[index] && (
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      <History className="h-3 w-3 shrink-0" />
+                      Last delivered by <span className="font-medium text-foreground">{lastDriverByStop[index]!.driverName}</span>
+                      {lastDriverByStop[index]!.deliveredAt && ` on ${formatLastDeliveredDate(lastDriverByStop[index]!.deliveredAt!)}`}
+                    </p>
                   )}
                 </div>
               </div>

@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getDriverDetails } from '@/lib/region-utils'
 
 function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -1049,8 +1050,12 @@ export async function checkDriverConflicts(
   excludeRouteId?: number,
 ) {
   const { role } = await verifyAuth()
-  if (role !== 'admin') {
-    throw new Error('Forbidden: Admin access required')
+  // Pharmacies can check conflicts too, since they can now assign a driver
+  // themselves when requesting a route (see pharmacyCreateRouteWithDriver) -
+  // this only ever reveals a conflicting route's id/name, the same
+  // information already shown in the admin assignment flow's warning.
+  if (role !== 'admin' && role !== 'pharmacy') {
+    throw new Error('Forbidden: Admin or pharmacy access required')
   }
   if (!driverId || ranges.length === 0) return []
 
@@ -1252,6 +1257,56 @@ export async function getPublicTrackingInfo(trackingCode: string) {
   }
 }
 
+/**
+ * Looks up who last actually delivered to this exact pharmacy+address pair,
+ * so an admin building or editing a route can see "last delivered by Jane
+ * on 9/20" - useful for keeping the same driver on a stop a patient already
+ * knows, or just noticing a pattern. Matches on the pickup pharmacy and the
+ * dropoff address text (trimmed, case-insensitive) since that's the only
+ * stable identifier a free-text delivery address has.
+ */
+export async function getLastDriverForStop(pharmacyId: string, dropoffAddress: string, excludeRouteId?: number) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const trimmed = dropoffAddress.trim()
+  if (!pharmacyId || !trimmed) return null
+
+  const supabase = createAdminClient()
+
+  let query = supabase
+    .from('route_stops')
+    .select(
+      'actual_delivery_time, route_id, routes(start_time, driver_id, drivers(users(first_name, last_name)))',
+    )
+    .eq('pharmacy_id', pharmacyId)
+    .ilike('dropoff_address', trimmed)
+    .eq('status', 'delivered')
+    .order('actual_delivery_time', { ascending: false, nullsFirst: false })
+    .limit(5)
+
+  if (excludeRouteId) {
+    query = query.neq('route_id', excludeRouteId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  if (!data || data.length === 0) return null
+
+  const match = data[0] as any
+  const driverUser = match.routes?.drivers?.users
+  if (!driverUser) return null
+
+  return {
+    driverName: `${driverUser.first_name || ''} ${driverUser.last_name || ''}`.trim() || 'Unknown driver',
+    deliveredAt: match.actual_delivery_time || match.routes?.start_time || null,
+  }
+}
+
 export async function getRouteById(routeId: number) {
   const { role } = await verifyAuth()
   
@@ -1289,6 +1344,11 @@ export async function getRouteById(routeId: number) {
       dropoff_address: stop.dropoff_address,
       stop_order: stop.stop_order,
       status: stop.status,
+      // Without these, reopening Edit Route always showed a priority stop as
+      // unflagged (even though it was correctly saved) - and saving from
+      // there would then silently overwrite the real value back to false.
+      is_priority: stop.is_priority,
+      designated_time: stop.designated_time,
     })) || []
   }
 }
@@ -1692,6 +1752,138 @@ export async function broadcastMessageToAllDrivers(content: string) {
   if (insertError) throw insertError
 
   return { sentTo: messagesToInsert.length }
+}
+
+/**
+ * Drivers a pharmacy can pick from when assigning one itself, rather than
+ * leaving a request for an admin to assign. Prefers drivers in the same
+ * region as the requesting pharmacy (mirroring the admin assignment modal's
+ * logic), but falls back to every driver if that region has none, so the
+ * feature stays usable before regions are fully set up.
+ */
+export async function getDriversForPharmacyAssignment() {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id, pharmacies(region)')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const pharmacyRow: any = Array.isArray(pharmacyUser.pharmacies) ? pharmacyUser.pharmacies[0] : pharmacyUser.pharmacies
+  const pharmacyRegion = pharmacyRow?.region || null
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('id, first_name, last_name, drivers(region)')
+    .eq('role', 'driver')
+
+  if (error) throw error
+
+  const allDrivers = (users || []).map((u: any) => ({
+    id: u.id,
+    name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+    region: getDriverDetails(u)?.region || null,
+  }))
+
+  const regionMatched = pharmacyRegion ? allDrivers.filter((d) => d.region === pharmacyRegion) : allDrivers
+  return regionMatched.length > 0 ? regionMatched : allDrivers
+}
+
+/**
+ * Lets a pharmacy create a real, already-assigned route directly, instead
+ * of leaving a pending route_requests row for an admin to pick up. Bypasses
+ * createRoute's admin-only gate by calling insertRouteWithStops directly,
+ * but still records a route_requests row (status 'assigned') so this stays
+ * visible anywhere requests are reviewed or reported on, exactly like one
+ * an admin assigned.
+ */
+export async function pharmacyCreateRouteWithDriver(input: {
+  stops: Array<{
+    address: string
+    lat?: number | null
+    lng?: number | null
+    isPriority?: boolean
+    requestedTime?: string | null
+  }>
+  driverId: string
+  startTime?: string
+  isEmergency: boolean
+  sourceLink?: string | null
+}) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  if (input.stops.length === 0) {
+    throw new Error('At least one delivery address is required')
+  }
+  if (!input.driverId) {
+    throw new Error('A driver is required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: pharmacyUser, error: lookupError } = await supabase
+    .from('pharmacy_users')
+    .select('pharmacy_id, pharmacies(name, address)')
+    .eq('id', userId)
+    .single()
+
+  if (lookupError) throw lookupError
+  if (!pharmacyUser?.pharmacy_id) throw new Error('No pharmacy is linked to this account')
+
+  const pharmacyRow: any = Array.isArray(pharmacyUser.pharmacies) ? pharmacyUser.pharmacies[0] : pharmacyUser.pharmacies
+  const pharmacyName = pharmacyRow?.name || 'Pharmacy'
+  const pharmacyAddress = pharmacyRow?.address || ''
+
+  const stops = input.stops.map((s, index) => ({
+    pharmacyId: pharmacyUser.pharmacy_id as string,
+    pickupAddress: pharmacyAddress,
+    dropoffAddress: s.address,
+    dropoffLatitude: s.lat ?? null,
+    dropoffLongitude: s.lng ?? null,
+    sequence: index + 1,
+    isPriority: s.isPriority || false,
+    designatedTime: s.requestedTime || null,
+  }))
+
+  const route = await insertRouteWithStops(supabase, {
+    name: `${pharmacyName} - ${new Date().toLocaleDateString()}`,
+    startTime: input.startTime,
+    // Same 30-min-per-stop default estimate used everywhere else a route
+    // is created, so end_time still gets derived sensibly here too.
+    estimatedDuration: stops.length * 30,
+    priority: input.isEmergency ? 'urgent' : 'medium',
+    driverId: input.driverId,
+    stops,
+  })
+
+  const { error: requestError } = await supabase.from('route_requests').insert({
+    pharmacy_id: pharmacyUser.pharmacy_id,
+    requested_by: userId,
+    source_link: input.sourceLink || null,
+    stops: input.stops,
+    is_emergency: input.isEmergency,
+    status: 'assigned',
+    route_id: route.id,
+    resolved_at: new Date().toISOString(),
+  })
+
+  if (requestError) throw requestError
+
+  return route
 }
 
 export async function createRouteRequest(input: {
