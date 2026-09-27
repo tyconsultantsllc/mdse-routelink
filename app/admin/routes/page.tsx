@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Plus, Edit, MapIcon, Trash2, AlertCircle, UserPlus } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -208,6 +208,20 @@ export default function RouteManagement() {
   const priorityRouteCount = regionFilteredRoutes.filter((r) => r.priorityStops > 0).length
   const filteredRoutes = priorityOnly ? regionFilteredRoutes.filter((r) => r.priorityStops > 0) : regionFilteredRoutes
 
+  // The overview map only ever needs to show what's still actually on the
+  // road - getRoutes() returns every route ever created with no limit, and
+  // handing all of that (potentially months of completed history) to
+  // RouteMap meant it was live-geocoding an ever-growing pile of old
+  // addresses on every single page load, which is why it could sit on
+  // "Locating stops..." for a very long time. Memoized so this stays the
+  // same array reference across unrelated re-renders (e.g. toggling the
+  // priority filter) - a fresh array here on every render would restart
+  // RouteMap's draw effect (it depends on this prop) before it ever finishes.
+  const activeRoutesForMap = useMemo(
+    () => routes.filter((r) => r.status !== "completed" && r.status !== "cancelled"),
+    [routes],
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -248,13 +262,19 @@ export default function RouteManagement() {
             </div>
 
             <Card className="p-6 mb-6" ref={mapRef}>
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-foreground">Active Routes Map</h3>
+                <p className="text-xs text-muted-foreground">
+                  Shows every pending or in-progress route's delivery path. Completed and cancelled routes aren't plotted here.
+                </p>
+              </div>
               <RouteMap
                 highlightedRouteId={highlightedRouteId}
-                routes={routes}
+                routes={activeRoutesForMap}
                 onHighlightMissing={() =>
                   toast({
                     title: "Couldn't show this route on the map",
-                    description: `${highlightedRouteName || "This route"} may not have valid stop addresses yet, or the map is still locating stops for other routes - try again in a moment.`,
+                    description: `${highlightedRouteName || "This route"} may not have valid stop addresses yet, may already be completed or cancelled, or the map is still locating stops for other routes - try again in a moment.`,
                     variant: "destructive",
                   })
                 }

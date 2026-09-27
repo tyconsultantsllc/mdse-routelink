@@ -740,6 +740,32 @@ export async function updateUser(userId: string, updates: {
   return { success: true }
 }
 
+/**
+ * Caches a live-geocoded dropoff location back onto its stop, so the admin
+ * routes map (route-map.tsx) never has to re-geocode the same address again
+ * on a future page load. Most stops created before a route went through the
+ * optimizer, or wasn't pasted in from a maps link, have no stored
+ * dropoff_latitude/longitude at all - without this, every single admin page
+ * load re-resolves every one of them from scratch, one at a time, at
+ * Nominatim's ~1/second rate limit.
+ */
+export async function updateStopCoordinates(stopId: string, lat: number, lng: number) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('route_stops')
+    .update({ dropoff_latitude: lat, dropoff_longitude: lng })
+    .eq('id', stopId)
+
+  if (error) throw error
+  return { success: true }
+}
+
 export async function getRouteStops() {
   const { role } = await verifyAuth()
   

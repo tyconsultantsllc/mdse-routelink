@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css"
 import { geocodeAddress } from "@/lib/geocode"
 
 interface RouteStop {
+  id?: string
   stop_order: number
   dropoff_address: string
   dropoff_latitude?: number | null
@@ -77,7 +78,12 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
 
       const allPoints: [number, number][] = []
 
-      for (const route of routes) {
+      // A labeled loop (rather than early `return`s from inside the nested
+      // stop loop) so every exit path still falls through to the
+      // `setIsGeocoding(false)` at the end - a naked `return` here used to
+      // skip that and leave "Locating stops..." on screen forever once a
+      // route with no map or a cancelled effect was hit mid-draw.
+      routesLoop: for (const route of routes) {
         const stops = [...(route.route_stops || [])].sort((a, b) => a.stop_order - b.stop_order)
         if (stops.length === 0) continue
 
@@ -106,10 +112,18 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
             pointMeta.push({ stop, isPriorityDropoff: !!stop.is_priority })
           } else if (stop.dropoff_address) {
             const coords = await geocodeAddress(stop.dropoff_address)
-            if (cancelled) return
+            if (cancelled) break routesLoop
             if (coords) {
               points.push([coords.lat, coords.lng])
               pointMeta.push({ stop, isPriorityDropoff: !!stop.is_priority })
+              // Cache it on the stop so this exact address is never
+              // live-geocoded again on a future load - fire-and-forget,
+              // doesn't hold up drawing the map.
+              if (stop.id) {
+                import('@/app/actions/data-actions')
+                  .then(({ updateStopCoordinates }) => updateStopCoordinates(stop.id!, coords.lat, coords.lng))
+                  .catch(() => {})
+              }
               // Nominatim's public server caps requests at ~1/second
               await new Promise((resolve) => setTimeout(resolve, 1100))
             }
@@ -117,7 +131,7 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
         }
 
         if (points.length === 0) continue
-        if (!mapRef.current) return
+        if (!mapRef.current) break routesLoop
         const map = mapRef.current
 
         const color = PRIORITY_COLORS[route.priority] || PRIORITY_COLORS.medium
