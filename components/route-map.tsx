@@ -19,6 +19,37 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
+// Asks OSRM's free public routing demo for the real driving path through a
+// series of points, in the order given (a "route" request, not "trip" - this
+// app has already decided the stop order itself, so OSRM is never asked to
+// reorder anything, only to draw the roads between the stops as sequenced).
+// Returns null on any failure - network error, timeout, or no drivable path
+// found - so the caller can fall back to a plain straight line instead of
+// the map breaking. This is the same public-demo tradeoff already made for
+// geocoding via Nominatim elsewhere in this file: free and good enough for
+// this app's traffic, but not a paid, guaranteed-uptime service.
+async function fetchRoadRoute(points: [number, number][]): Promise<[number, number][] | null> {
+  if (points.length < 2) return null
+  try {
+    const coordsParam = points.map(([lat, lng]) => `${lng},${lat}`).join(";")
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 6000)
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${coordsParam}?overview=full&geometries=geojson`,
+      { signal: controller.signal },
+    )
+    clearTimeout(timeoutId)
+    if (!response.ok) return null
+    const data = await response.json()
+    const coordinates = data?.routes?.[0]?.geometry?.coordinates
+    if (!Array.isArray(coordinates) || coordinates.length === 0) return null
+    // OSRM/GeoJSON coordinates are [lng, lat]; Leaflet wants [lat, lng].
+    return coordinates.map((c: [number, number]) => [c[1], c[0]] as [number, number])
+  } catch {
+    return null
+  }
+}
+
 interface RouteStop {
   id?: string
   stop_order: number
@@ -180,10 +211,22 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
 
         if (points.length === 0) continue
         if (!mapRef.current) break routesLoop
-        const map = mapRef.current
 
         const color = PRIORITY_COLORS[route.priority] || PRIORITY_COLORS.medium
-        const polyline = L.polyline(points, { color, weight: 4, opacity: 0.7 }).addTo(map)
+
+        // Follow the actual roads between stops, in the order they're
+        // already sequenced, instead of a straight line through fields and
+        // buildings. Falls back to that same straight line if the routing
+        // service can't be reached, times out, or can't find a drivable
+        // path - so a hiccup here never breaks the map, it only loses the
+        // road-following detail for that one route.
+        const roadPath = await fetchRoadRoute(points)
+        if (cancelled) break routesLoop
+        if (!mapRef.current) break routesLoop
+        const map = mapRef.current
+        const linePoints = roadPath && roadPath.length > 0 ? roadPath : points
+
+        const polyline = L.polyline(linePoints, { color, weight: 4, opacity: 0.7 }).addTo(map)
         polyline.bindPopup(`<strong>${route.name}</strong>`)
         routeLayersRef.current.set(route.id, polyline)
 
@@ -224,7 +267,11 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
           }
         })
 
-        allPoints.push(...points)
+        // Include the actual road path (not just the stop points) in the
+        // fit-bounds calculation - a real road can bow out past the
+        // straight-line box between two stops, and without this the map
+        // could zoom to a view that clips part of the drawn route.
+        allPoints.push(...points, ...linePoints)
         routesDrawn++
       }
 
