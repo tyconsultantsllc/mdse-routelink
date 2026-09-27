@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChevronLeft, ChevronRight, Plus, CalendarIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, CalendarIcon, CheckCircle2, Clock as ClockIcon, XCircle, UserX } from 'lucide-react'
 import { useState, useEffect } from "react"
 import { AddRouteModal } from "@/components/add-route-modal"
 import { getRoutes, getUsers } from "@/app/actions/data-actions"
@@ -178,14 +178,23 @@ export default function CalendarView() {
     }
   }
 
-  const getConfirmationDotColor = (confirmation: string) => {
+  // Icon + color for driver confirmation, used everywhere this shows up so
+  // it reads at the same glance-level as priority does, rather than the
+  // small color-only dot this used to be.
+  const getConfirmationIcon = (confirmation: string) => {
+    if (confirmation === "confirmed") return CheckCircle2
+    if (confirmation === "declined") return XCircle
+    return ClockIcon
+  }
+
+  const getConfirmationIconColor = (confirmation: string) => {
     switch (confirmation) {
       case "confirmed":
-        return "bg-green-500"
+        return "text-green-600"
       case "declined":
-        return "bg-red-500"
+        return "text-red-600"
       default:
-        return "bg-amber-500"
+        return "text-amber-600"
     }
   }
 
@@ -253,8 +262,9 @@ export default function CalendarView() {
           ) : (
             <>
           {/* Legend */}
-          <Card className="p-4 mb-6">
+          <Card className="p-4 mb-6 space-y-3">
             <div className="flex flex-wrap items-center gap-4">
+              <span className="text-xs font-medium text-muted-foreground">Priority:</span>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <span className="text-sm">Urgent</span>
@@ -270,6 +280,25 @@ export default function CalendarView() {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-gray-500"></div>
                 <span className="text-sm">Low Priority</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 pt-3 border-t">
+              <span className="text-xs font-medium text-muted-foreground">Driver:</span>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                <span className="text-sm">Confirmed</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ClockIcon className="h-3.5 w-3.5 text-amber-600" />
+                <span className="text-sm">Awaiting confirmation</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <XCircle className="h-3.5 w-3.5 text-red-600" />
+                <span className="text-sm">Declined</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <UserX className="h-3.5 w-3.5 text-red-700" />
+                <span className="text-sm font-medium text-red-700">Unassigned</span>
               </div>
             </div>
           </Card>
@@ -317,24 +346,41 @@ export default function CalendarView() {
                           )}
                         </div>
                         <div className="space-y-1">
-                          {routes.slice(0, 2).map((route) => (
-                            <div
-                              key={route.id}
-                              className={`text-xs p-1.5 rounded border relative ${getPriorityColor(route.priority)}`}
-                            >
-                              <span
-                                className={`absolute top-1 right-1 h-1.5 w-1.5 rounded-full ${getConfirmationDotColor(route.driverConfirmation)}`}
-                              />
-                              <div className="font-medium truncate pr-2">{route.name}</div>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Avatar className="h-3 w-3">
-                                  <AvatarImage src={route.driverAvatar || "/placeholder.svg"} />
-                                  <AvatarFallback>{route.driver[0]}</AvatarFallback>
-                                </Avatar>
-                                <span className="truncate text-xs">{route.startTime}</span>
+                          {routes.slice(0, 2).map((route) => {
+                            const isUnassigned = !route.driverId
+                            const ConfirmationIcon = getConfirmationIcon(route.driverConfirmation)
+                            return (
+                              <div
+                                key={route.id}
+                                className={`text-xs p-1.5 rounded border-2 border-l-4 ${getPriorityColor(route.priority)}`}
+                              >
+                                <div className="font-medium truncate">{route.name}</div>
+                                <div className="flex items-center justify-between gap-1 mt-0.5">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    {isUnassigned ? (
+                                      <UserX className="h-3 w-3 text-red-700 shrink-0" />
+                                    ) : (
+                                      <Avatar className="h-3 w-3 shrink-0">
+                                        <AvatarImage src={route.driverAvatar || "/placeholder.svg"} />
+                                        <AvatarFallback>{route.driver[0]}</AvatarFallback>
+                                      </Avatar>
+                                    )}
+                                    <span
+                                      className={`truncate text-xs ${isUnassigned ? "font-semibold text-red-700" : ""}`}
+                                    >
+                                      {isUnassigned ? "Unassigned" : route.driver}
+                                    </span>
+                                  </div>
+                                  <ConfirmationIcon
+                                    className={`h-3 w-3 shrink-0 ${getConfirmationIconColor(route.driverConfirmation)}`}
+                                  />
+                                </div>
+                                <div className="truncate text-xs text-muted-foreground/80 mt-0.5">
+                                  {route.startTime}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                           {routes.length > 2 && (
                             <div className="text-xs text-muted-foreground text-center">+{routes.length - 2} more</div>
                           )}
@@ -363,61 +409,77 @@ export default function CalendarView() {
 
               {scheduledRoutes[formatDateKey(selectedDate)]?.length > 0 ? (
                 <div className="space-y-3">
-                  {scheduledRoutes[formatDateKey(selectedDate)].map((route) => (
-                    <div key={route.id} className="flex items-center justify-between p-4 rounded-lg border bg-card">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={route.driverAvatar || "/placeholder.svg"} />
-                          <AvatarFallback>{route.driver[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold">{route.name}</p>
-                            {route.seriesId && (
-                              <button
-                                onClick={() => setViewingSeriesId(route.seriesId)}
-                                className="text-xs text-primary hover:underline"
-                              >
-                                Series
-                              </button>
-                            )}
+                  {scheduledRoutes[formatDateKey(selectedDate)].map((route) => {
+                    const isUnassigned = !route.driverId
+                    const ConfirmationIcon = getConfirmationIcon(route.driverConfirmation)
+                    return (
+                      <div key={route.id} className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                        <div className="flex items-center gap-4">
+                          {isUnassigned ? (
+                            <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                              <UserX className="h-5 w-5 text-red-700" />
+                            </div>
+                          ) : (
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={route.driverAvatar || "/placeholder.svg"} />
+                              <AvatarFallback>{route.driver[0]}</AvatarFallback>
+                            </Avatar>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">{route.name}</p>
+                              {route.seriesId && (
+                                <button
+                                  onClick={() => setViewingSeriesId(route.seriesId)}
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  Series
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground flex items-center gap-1 flex-wrap">
+                              {isUnassigned ? (
+                                <span className="font-semibold text-red-700">Unassigned</span>
+                              ) : (
+                                route.driver
+                              )}
+                              <span>• {route.stops} stops</span>
+                            </p>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {route.driver} • {route.stops} stops
-                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-sm font-medium">
+                              {route.startTime} - {route.endTime}
+                            </p>
+                          </div>
+                          <Badge className={getPriorityColor(route.priority)}>
+                            {route.priority.charAt(0).toUpperCase() + route.priority.slice(1)}
+                          </Badge>
+                          <RegionBadge region={route.region} />
+                          <Badge className={`${getConfirmationColor(route.driverConfirmation)} flex items-center gap-1`}>
+                            <ConfirmationIcon className="h-3 w-3" />
+                            {route.driverConfirmation.charAt(0).toUpperCase() + route.driverConfirmation.slice(1)}
+                          </Badge>
+                          <Badge className={getStatusColor(route.status)}>
+                            {route.status === "in-progress"
+                              ? "In Progress"
+                              : route.status.charAt(0).toUpperCase() + route.status.slice(1)}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setCopyFromRoute(route)
+                              setAddRouteModalOpen(true)
+                            }}
+                          >
+                            Copy
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <p className="text-sm font-medium">
-                            {route.startTime} - {route.endTime}
-                          </p>
-                        </div>
-                        <Badge className={getPriorityColor(route.priority)}>
-                          {route.priority.charAt(0).toUpperCase() + route.priority.slice(1)}
-                        </Badge>
-                        <RegionBadge region={route.region} />
-                        <Badge className={getConfirmationColor(route.driverConfirmation)}>
-                          {route.driverConfirmation.charAt(0).toUpperCase() + route.driverConfirmation.slice(1)}
-                        </Badge>
-                        <Badge className={getStatusColor(route.status)}>
-                          {route.status === "in-progress"
-                            ? "In Progress"
-                            : route.status.charAt(0).toUpperCase() + route.status.slice(1)}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setCopyFromRoute(route)
-                            setAddRouteModalOpen(true)
-                          }}
-                        >
-                          Copy
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

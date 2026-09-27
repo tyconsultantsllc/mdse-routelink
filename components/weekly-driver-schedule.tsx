@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, UserX } from "lucide-react"
 
 interface WeeklyDriverScheduleProps {
   scheduledRoutes: Record<string, any[]>
@@ -84,6 +84,7 @@ export function WeeklyDriverSchedule({ scheduledRoutes, onSelectRoute }: WeeklyD
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Confirmed</span>
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Pending</span>
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> Declined</span>
+        <span className="flex items-center gap-1 text-red-700 font-medium"><UserX className="h-3 w-3" /> Unassigned</span>
       </div>
 
       {loadingDrivers ? (
@@ -100,6 +101,35 @@ export function WeeklyDriverSchedule({ scheduledRoutes, onSelectRoute }: WeeklyD
                 return (
                   <div key={day.toISOString()} className={`text-center text-xs font-medium py-1 rounded ${isToday ? "bg-muted" : ""}`}>
                     {dayLabels[day.getDay()]} {day.getDate()}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Routes with no driver assigned yet - these used to just vanish
+                from this view entirely, since it only ever grouped by a
+                known driver id. Shown first since an unassigned route is
+                the one that most needs an admin's attention. */}
+            <div className="grid grid-cols-[140px_repeat(7,1fr)] gap-1 mb-1">
+              <div className="text-sm font-semibold py-2 pr-2 truncate flex items-center gap-1.5 text-red-700">
+                <UserX className="h-3.5 w-3.5 shrink-0" />
+                Unassigned
+              </div>
+              {weekDays.map((day) => {
+                const dateKey = formatDateKey(day)
+                const dayRoutes = (scheduledRoutes[dateKey] || []).filter((r) => !r.driverId)
+                return (
+                  <div key={dateKey} className="min-h-[60px] space-y-1">
+                    {dayRoutes.map((route) => (
+                      <button
+                        key={route.id}
+                        onClick={() => onSelectRoute(route)}
+                        className="w-full text-left text-xs p-1.5 rounded border-2 border-red-300 bg-red-50 hover:opacity-80 transition-opacity"
+                      >
+                        <div className="font-medium truncate">{route.name}</div>
+                        <div className="truncate text-muted-foreground">{route.startTime}</div>
+                      </button>
+                    ))}
                   </div>
                 )
               })}
