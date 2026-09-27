@@ -44,6 +44,8 @@ interface RouteStopForm {
   pharmacyName: string
   pickupAddress: string
   dropoffAddress: string
+  isPriority?: boolean
+  designatedTime?: string
 }
 
 export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copyFrom }: AddRouteModalProps) {
@@ -60,6 +62,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       pharmacyName: "",
       pickupAddress: "",
       dropoffAddress: "",
+      isPriority: false,
+      designatedTime: "",
     },
   ])
   const [pharmacies, setPharmacies] = useState<Array<{ id: string; name: string; address: string; latitude?: number; longitude?: number; region?: string }>>([])
@@ -80,7 +84,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       if (copyFrom) {
         setRouteName(`${copyFrom.name} (Copy)`)
         setPriority(copyFrom.priority)
-        setStops(copyFrom.stops.length > 0 ? copyFrom.stops : [{ pharmacyId: "", pharmacyName: "", pickupAddress: "", dropoffAddress: "" }])
+        setStops(copyFrom.stops.length > 0 ? copyFrom.stops : [{ pharmacyId: "", pharmacyName: "", pickupAddress: "", dropoffAddress: "", isPriority: false, designatedTime: "" }])
       }
     }
   }, [open, copyFrom])
@@ -131,6 +135,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         pharmacyName: "",
         pickupAddress: "",
         dropoffAddress: "",
+        isPriority: false,
+        designatedTime: "",
       },
     ])
   }
@@ -141,7 +147,13 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
 
   const updateStop = (index: number, field: keyof RouteStopForm, value: string) => {
     const newStops = [...stops]
-    newStops[index][field] = value
+    newStops[index] = { ...newStops[index], [field]: value }
+    setStops(newStops)
+  }
+
+  const updateStopPriority = (index: number, isPriority: boolean) => {
+    const newStops = [...stops]
+    newStops[index] = { ...newStops[index], isPriority }
     setStops(newStops)
   }
 
@@ -176,6 +188,8 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
         pickupAddress: stop.pickupAddress,
         dropoffAddress: stop.dropoffAddress,
         sequence: index + 1,
+        isPriority: stop.isPriority || false,
+        designatedTime: stop.isPriority ? stop.designatedTime || undefined : undefined,
       }))
 
       if (isRecurring) {
@@ -318,15 +332,19 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           pharmacyName: originalStop.pharmacyName,
           pickupAddress: originalStop.pickupAddress,
           dropoffAddress: originalStop.dropoffAddress,
+          isPriority: originalStop.isPriority,
+          designatedTime: originalStop.designatedTime,
         }
       }
-      
+
       // Fallback (should not happen in normal operation)
       return {
         pharmacyId: "",
         pharmacyName: "",
         pickupAddress: "",
         dropoffAddress: "",
+        isPriority: false,
+        designatedTime: "",
       }
     })
 
@@ -603,6 +621,32 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                     onChange={(value) => updateStop(index, "dropoffAddress", value)}
                     required
                   />
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3 pt-1">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`priority-${index}`}
+                      checked={!!stop.isPriority}
+                      onCheckedChange={(checked) => updateStopPriority(index, checked === true)}
+                    />
+                    <Label htmlFor={`priority-${index}`} className="cursor-pointer font-normal">
+                      Priority stop
+                    </Label>
+                  </div>
+                  {stop.isPriority && (
+                    <div>
+                      <Label htmlFor={`designated-time-${index}`}>Designated Delivery Time</Label>
+                      <Input
+                        id={`designated-time-${index}`}
+                        type="time"
+                        step={900}
+                        value={stop.designatedTime || ""}
+                        onChange={(e) => updateStop(index, "designatedTime", e.target.value)}
+                        className="w-36"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

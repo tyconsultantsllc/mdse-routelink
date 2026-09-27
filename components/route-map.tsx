@@ -10,6 +10,8 @@ interface RouteStop {
   dropoff_address: string
   dropoff_latitude?: number | null
   dropoff_longitude?: number | null
+  is_priority?: boolean | null
+  designated_time?: string | null
   pharmacies?: {
     name: string
     address: string
@@ -80,11 +82,18 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
         if (stops.length === 0) continue
 
         const points: [number, number][] = []
+        // Tracks, per pushed point, which stop it belongs to and whether
+        // it's the priority-marked dropoff - kept alongside `points` rather
+        // than derived from its index, since not every stop contributes
+        // exactly two points (a stop with no pharmacy coordinates only
+        // contributes its dropoff, for instance).
+        const pointMeta: { stop: RouteStop; isPriorityDropoff: boolean }[] = []
 
         for (const stop of stops) {
           // Pickup: the pharmacy's real stored coordinates
           if (stop.pharmacies?.latitude != null && stop.pharmacies?.longitude != null) {
             points.push([stop.pharmacies.latitude, stop.pharmacies.longitude])
+            pointMeta.push({ stop, isPriorityDropoff: false })
           }
 
           // Dropoff: prefer coordinates already stored on the stop (set at
@@ -94,11 +103,13 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
           // reachable right now, when nothing is stored yet.
           if (stop.dropoff_latitude != null && stop.dropoff_longitude != null) {
             points.push([stop.dropoff_latitude, stop.dropoff_longitude])
+            pointMeta.push({ stop, isPriorityDropoff: !!stop.is_priority })
           } else if (stop.dropoff_address) {
             const coords = await geocodeAddress(stop.dropoff_address)
             if (cancelled) return
             if (coords) {
               points.push([coords.lat, coords.lng])
+              pointMeta.push({ stop, isPriorityDropoff: !!stop.is_priority })
               // Nominatim's public server caps requests at ~1/second
               await new Promise((resolve) => setTimeout(resolve, 1100))
             }
@@ -114,11 +125,33 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
         polyline.bindPopup(`<strong>${route.name}</strong>`)
         routeLayersRef.current.set(route.id, polyline)
 
+        const formatDesignatedTime = (time: string) => {
+          const d = new Date(`1970-01-01T${time}`)
+          return isNaN(d.getTime()) ? time : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+        }
+
         points.forEach((point, index) => {
-          const stop = stops[Math.floor(index / 2)]
-          L.marker(point)
-            .addTo(map)
-            .bindPopup(`<strong>${route.name}</strong><br/>${stop?.pharmacies?.name || "Stop"}`)
+          const meta = pointMeta[index]
+          const stop = meta?.stop
+          const label = stop?.pharmacies?.name || "Stop"
+          if (meta?.isPriorityDropoff) {
+            const timeLine = stop?.designated_time
+              ? `<br/>Requested for ${formatDesignatedTime(stop.designated_time)}`
+              : ""
+            L.circleMarker(point, {
+              radius: 10,
+              color: "#b45309",
+              fillColor: "#f59e0b",
+              fillOpacity: 0.9,
+              weight: 2,
+            })
+              .addTo(map)
+              .bindPopup(`<strong>${route.name}</strong><br/>⭐ Priority - ${label}${timeLine}`)
+          } else {
+            L.marker(point)
+              .addTo(map)
+              .bindPopup(`<strong>${route.name}</strong><br/>${label}`)
+          }
         })
 
         allPoints.push(...points)

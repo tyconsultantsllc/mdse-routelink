@@ -806,6 +806,8 @@ interface RouteInsertData {
     sequence: number
     dropoffLatitude?: number | null
     dropoffLongitude?: number | null
+    isPriority?: boolean
+    designatedTime?: string | null
   }>
 }
 
@@ -864,6 +866,8 @@ async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClien
     dropoff_latitude: stop.dropoffLatitude ?? null,
     dropoff_longitude: stop.dropoffLongitude ?? null,
     stop_order: stop.sequence,
+    is_priority: stop.isPriority ?? false,
+    designated_time: stop.designatedTime || null,
     status: 'pending',
   }))
 
@@ -886,6 +890,8 @@ export async function createRoute(routeData: {
     sequence: number
     dropoffLatitude?: number | null
     dropoffLongitude?: number | null
+    isPriority?: boolean
+    designatedTime?: string | null
   }>
 }) {
   const { role } = await verifyAuth()
@@ -925,6 +931,8 @@ export async function createRouteSeries(input: {
     sequence: number
     dropoffLatitude?: number | null
     dropoffLongitude?: number | null
+    isPriority?: boolean
+    designatedTime?: string | null
   }>
   confirmDespiteConflicts?: boolean
 }) {
@@ -1329,6 +1337,8 @@ export async function updateRoute(routeId: number, routeData: {
     pickupAddress: string
     dropoffAddress: string
     stopOrder: number
+    isPriority?: boolean
+    designatedTime?: string | null
   }>
 }) {
   const { role } = await verifyAuth()
@@ -1420,6 +1430,8 @@ export async function updateRoute(routeId: number, routeData: {
           pickup_address: stop.pickupAddress,
           dropoff_address: stop.dropoffAddress,
           stop_order: stop.stopOrder,
+          is_priority: stop.isPriority ?? false,
+          designated_time: stop.designatedTime || null,
         })
         .eq('id', stop.id)
       if (updateStopError) throw updateStopError
@@ -1436,6 +1448,8 @@ export async function updateRoute(routeId: number, routeData: {
       pickup_address: stop.pickupAddress,
       dropoff_address: stop.dropoffAddress,
       stop_order: stop.stopOrder,
+      is_priority: stop.isPriority ?? false,
+      designated_time: stop.designatedTime || null,
       status: 'pending',
     }))
 
@@ -1473,6 +1487,8 @@ export async function updateRouteOccurrence(
       pickupAddress: string
       dropoffAddress: string
       stopOrder: number
+      isPriority?: boolean
+      designatedTime?: string | null
     }>
   },
   scope: 'this' | 'following',
@@ -1525,6 +1541,8 @@ export async function updateRouteOccurrence(
         pickupAddress: s.pickupAddress,
         dropoffAddress: s.dropoffAddress,
         sequence: i + 1,
+        isPriority: s.isPriority ?? false,
+        designatedTime: s.designatedTime || null,
       })),
     })
     .eq('id', thisRoute.series_id)
@@ -1559,6 +1577,8 @@ export async function updateRouteOccurrence(
       pickup_address: s.pickupAddress,
       dropoff_address: s.dropoffAddress,
       stop_order: i + 1,
+      is_priority: s.isPriority ?? false,
+      designated_time: s.designatedTime || null,
       status: 'pending',
     }))
     await supabase.from('route_stops').insert(newStops)

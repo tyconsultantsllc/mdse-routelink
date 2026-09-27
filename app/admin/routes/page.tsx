@@ -66,6 +66,7 @@ export default function RouteManagement() {
           const stops = r.route_stops || []
           const failedStops = stops.filter((s: any) => s.status === 'failed').length
           const returnedStops = stops.filter((s: any) => s.status === 'returned').length
+          const priorityStops = stops.filter((s: any) => s.is_priority).length
           return {
             id: r.id,
             name: r.name || "Unnamed Route",
@@ -78,6 +79,7 @@ export default function RouteManagement() {
             stops: stops.length,
             failedStops,
             returnedStops,
+            priorityStops,
             driverConfirmation: r.driver_confirmation || "pending",
             declinedReason: r.declined_reason || null,
             seriesId: r.series_id || null,
@@ -327,6 +329,11 @@ export default function RouteManagement() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-foreground">{route.stops} stops</div>
+                          {route.priorityStops > 0 && (
+                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 mt-1">
+                              ⭐ {route.priorityStops} priority
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-foreground">{route.startTime}</div>

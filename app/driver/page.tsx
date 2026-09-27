@@ -47,6 +47,8 @@ interface RouteStop {
   failureReason?: string
   pharmacyReturnAddress?: string | null
   barcodeScanningEnabled?: boolean
+  isPriority?: boolean
+  designatedTime?: string | null
 }
 
 interface Route {
@@ -208,6 +210,8 @@ export default function DriverTrackingPage() {
                         : "pending",
               failureReason: stop.status === "failed" ? stop.notes : undefined,
               pharmacyReturnAddress: stop.pharmacies?.address || null,
+              isPriority: !!stop.is_priority,
+              designatedTime: stop.designated_time || null,
             })) || [],
         })) || []
       )
@@ -524,6 +528,14 @@ export default function DriverTrackingPage() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [isTracking, driverId])
 
+  // designated_time comes back from Postgres as "HH:MM:SS" - render it as a
+  // friendly clock time rather than the raw 24-hour string.
+  const formatDesignatedTime = (time: string) => {
+    const d = new Date(`1970-01-01T${time}`)
+    if (isNaN(d.getTime())) return time
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  }
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "urgent":
@@ -765,12 +777,24 @@ export default function DriverTrackingPage() {
                             <TooltipTrigger asChild>
                               <div className="flex items-center justify-between p-3 bg-muted rounded-md cursor-help">
                                 <div>
-                                  <p className="text-sm text-muted-foreground">Next Stop</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm text-muted-foreground">Next Stop</p>
+                                    {nextStop.isPriority && (
+                                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                                        ⭐ Priority
+                                      </Badge>
+                                    )}
+                                  </div>
                                   <p className="font-medium">{nextStop.pharmacyName}</p>
                                   <p className="text-xs text-muted-foreground mt-1">Pickup: {nextStop.pickupAddress}</p>
                                   <p className="text-xs text-muted-foreground">
                                     Dropoff: <AddressWithUnit address={nextStop.dropoffAddress} size="sm" />
                                   </p>
+                                  {nextStop.isPriority && nextStop.designatedTime && (
+                                    <p className="text-xs font-medium text-amber-700 mt-1">
+                                      Requested for {formatDesignatedTime(nextStop.designatedTime)}
+                                    </p>
+                                  )}
                                 </div>
                                 <Clock className="text-primary" />
                               </div>
@@ -856,7 +880,11 @@ export default function DriverTrackingPage() {
                             <div
                               key={stop.id}
                               className={`p-3 rounded-md border ${
-                                stop.status === "in-progress" ? "bg-blue-50 border-blue-200" : "bg-muted"
+                                stop.isPriority
+                                  ? "bg-amber-50 border-amber-300"
+                                  : stop.status === "in-progress"
+                                    ? "bg-blue-50 border-blue-200"
+                                    : "bg-muted"
                               }`}
                             >
                               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -866,6 +894,11 @@ export default function DriverTrackingPage() {
                                       Stop {index + 1}
                                     </Badge>
                                     <span className="font-medium text-xs md:text-sm">{stop.pharmacyName}</span>
+                                    {stop.isPriority && (
+                                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                                        ⭐ Priority{stop.designatedTime ? ` • ${formatDesignatedTime(stop.designatedTime)}` : ""}
+                                      </Badge>
+                                    )}
                                     <Badge
                                       className={
                                         stop.status === "completed"

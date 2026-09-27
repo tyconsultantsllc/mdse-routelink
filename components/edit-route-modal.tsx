@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import {
   AlertDialog,
@@ -38,6 +39,8 @@ interface RouteStopForm {
   dropoffAddress: string
   stopOrder: number
   status?: string
+  isPriority?: boolean
+  designatedTime?: string
 }
 
 export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditRouteModalProps) {
@@ -89,6 +92,9 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
             dropoffAddress: stop.dropoff_address || "",
             stopOrder: stop.stop_order || 0,
             status: stop.status || "pending",
+            isPriority: !!stop.is_priority,
+            // Postgres TIME comes back as "HH:MM:SS" - <input type="time"> wants "HH:MM"
+            designatedTime: stop.designated_time ? stop.designated_time.slice(0, 5) : "",
           })))
         }
       }
@@ -126,6 +132,8 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
         pickupAddress: "",
         dropoffAddress: "",
         stopOrder: stops.length + 1,
+        isPriority: false,
+        designatedTime: "",
       },
     ])
   }
@@ -134,9 +142,15 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
     setStops(stops.filter((_, i) => i !== index))
   }
 
-  const updateStop = (index: number, field: "pharmacyId" | "pharmacyName" | "pickupAddress" | "dropoffAddress", value: string) => {
+  const updateStop = (index: number, field: "pharmacyId" | "pharmacyName" | "pickupAddress" | "dropoffAddress" | "designatedTime", value: string) => {
     const newStops = [...stops]
-    newStops[index][field] = value
+    newStops[index] = { ...newStops[index], [field]: value }
+    setStops(newStops)
+  }
+
+  const updateStopPriority = (index: number, isPriority: boolean) => {
+    const newStops = [...stops]
+    newStops[index] = { ...newStops[index], isPriority }
     setStops(newStops)
   }
 
@@ -176,6 +190,8 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
             pickupAddress: stop.pickupAddress,
             dropoffAddress: stop.dropoffAddress,
             stopOrder: index + 1,
+            isPriority: stop.isPriority || false,
+            designatedTime: stop.isPriority ? stop.designatedTime || undefined : undefined,
           })),
         },
         scope,
@@ -395,6 +411,34 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                       required
                       disabled={isResolved}
                     />
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-3 pt-1">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`priority-${index}`}
+                        checked={!!stop.isPriority}
+                        onCheckedChange={(checked) => updateStopPriority(index, checked === true)}
+                        disabled={isResolved}
+                      />
+                      <Label htmlFor={`priority-${index}`} className="cursor-pointer font-normal">
+                        Priority stop
+                      </Label>
+                    </div>
+                    {stop.isPriority && (
+                      <div>
+                        <Label htmlFor={`designated-time-${index}`}>Designated Delivery Time</Label>
+                        <Input
+                          id={`designated-time-${index}`}
+                          type="time"
+                          step={900}
+                          value={stop.designatedTime || ""}
+                          onChange={(e) => updateStop(index, "designatedTime", e.target.value)}
+                          disabled={isResolved}
+                          className="w-36"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 )

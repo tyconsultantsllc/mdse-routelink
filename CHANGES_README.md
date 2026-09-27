@@ -1,74 +1,60 @@
-# PharmaTrack Express — changes from this session
+# Priority stops with a designated delivery time
 
-Drop each file into your project at the matching path (all paths below are
-relative to your project root). Everything here has been type-checked
-against your actual codebase.
+## What this adds
+When creating (or editing) a route, you can now mark **any individual stop**
+as a **Priority Stop** and give it a **Designated Delivery Time** — e.g.
+"this one needs to be there by 2:30 PM." This is separate from the existing
+route-level Priority field (Low/Medium/High/Urgent), which only describes
+the route as a whole and can't call out one stop among several.
 
-## SQL migrations — run in this order in the Supabase SQL editor
+## Where it shows up
+- **Add Route / Edit Route modals**: each stop card now has a "Priority
+  stop" checkbox; checking it reveals a 15-minute-increment time picker for
+  the designated time.
+- **Driver app**: a priority stop gets an amber "⭐ Priority" badge (with the
+  designated time, if set) both in the full stop list and in the "Next
+  Stop" summary card, and its card is highlighted amber so it stands out at
+  a glance.
+- **Admin Routes page**: the map's "View on Map" now draws priority stops as
+  a distinct amber circle marker (instead of the default pin) with the time
+  in its popup, and the routes table shows a "⭐ N priority" badge under the
+  stop count for any route that has one.
+- **Recurring series**: marking a stop priority when creating a recurring
+  route carries into every generated occurrence, and editing "this and
+  following" occurrences propagates the change the same way the rest of a
+  route's stops already do.
 
-1. `scripts/004_delivery_confirmation.sql`
-   Adds recipient/signature/photo columns to `route_stops`, creates the
-   private `proof-of-delivery` storage bucket, and widens the `routes.status`
-   check constraint to accept `in-progress` (your frontend used a hyphen
-   everywhere; the schema only allowed an underscore).
+## Migration - run this first
+Run `scripts/028_priority_stops.sql` in the Supabase SQL Editor before
+deploying this code. It adds two nullable/defaulted columns to
+`route_stops` (`is_priority boolean default false`, `designated_time time`),
+so it's safe to run even with the app already live - existing stops just
+default to "not priority."
 
-2. `scripts/005_scope_read_policies.sql`
-   Replaces the "any authenticated user can read everything" SELECT
-   policies on `pharmacies`, `routes`, `route_stops`, and `delivery_logs`
-   with ones scoped to the driver or pharmacy actually involved.
+## Files changed
+- `scripts/028_priority_stops.sql` (new migration)
+- `app/actions/data-actions.ts` - `createRoute`, `createRouteSeries`,
+  `updateRoute`, `updateRouteOccurrence`, and the shared
+  `insertRouteWithStops` helper now accept/persist `isPriority` +
+  `designatedTime` per stop, including keeping the series template and
+  future occurrences in sync.
+- `components/add-route-modal.tsx` - per-stop Priority Stop checkbox +
+  designated-time input; the route optimizer's reorder step now preserves
+  these fields instead of dropping them.
+- `components/edit-route-modal.tsx` - same UI, disabled for stops that
+  already have a real delivery outcome recorded (same rule as the rest of
+  that form).
+- `app/driver/page.tsx` - priority badge + designated time shown on each
+  stop and on the "Next Stop" preview.
+- `components/route-map.tsx` - priority stops draw as a distinct amber
+  marker with the designated time in the popup.
+- `app/admin/routes/page.tsx` - "⭐ N priority" badge on the routes table.
 
-3. `scripts/006_admin_helper_function.sql`
-   Adds an `is_admin()` SECURITY DEFINER function and moves every
-   admin-check policy onto it, replacing a self-referencing policy pattern
-   that worked but was fragile.
-
-## Code files
-
-- `app/driver/page.tsx` — real GPS via the browser Geolocation API (replacing
-  the simulated random walk), a Start button that moves a stop from pending
-  to in-progress, real persistence for delivery confirmation and route
-  completion, DB-status translation on fetch, and a fixed logout.
-- `app/pharmacy/page.tsx` — one-line fix: was querying a column
-  (`pharmacy_users.user_id`) that doesn't exist, breaking the whole portal.
-- `app/actions/data-actions.ts` — removed two dead functions that queried a
-  nonexistent `deliveries` table, removed debug `console.log` calls that
-  would've written delivery data into Vercel's logs, and capped two
-  previously-unbounded `delivery_logs` queries.
-- `components/signature-pad.tsx` (new) — touch/mouse/stylus signature
-  capture using Pointer Events; the original canvas only handled mouse
-  input, so it silently didn't work on phones.
-- `components/delivery-confirmation-modal.tsx` — now uses the component
-  above instead of the old mouse-only canvas.
-- `components/driver-map.tsx` — plots real GPS points directly instead of
-  fabricating a fake street-grid path between them.
-- `lib/driver-actions.ts` (new) — `confirmDeliveryStop`, `completeRoute`,
-  `startStop`, and `updateDriverLocation`: the actual persistence layer the
-  driver page now calls instead of only updating local state.
-- `lib/route-optimizer.ts` — removed one unused variable.
-
-## Manual steps only you can do
-
-- [ ] Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
-      `SUPABASE_SERVICE_ROLE_KEY` to your Vercel project's environment
-      variables (from your `.env.local` — Vercel never reads that file).
-- [ ] In Supabase, add your Vercel domain(s) under
-      Authentication → URL Configuration → Redirect URLs, or the
-      forgot-password flow will silently fail in production.
-- [ ] Delete the stray `pnpm-lock.yaml` from your project root — you have a
-      real `package-lock.json` sitting alongside it.
-- [ ] Test GPS tracking on an actual phone once deployed (geolocation
-      requires HTTPS or localhost — Vercel gives you HTTPS by default).
-
-## Known gaps not addressed in this session
-
-- No real road-snapped routing (would need a paid provider — Mapbox/Google
-  Directions or self-hosted OSRM — your call on which).
-- `app/admin/reports/page.tsx`'s per-driver delivery counts will undercount
-  once you pass 1,000 total delivery logs (see the comment in
-  `getDashboardStats` in `data-actions.ts`).
-- No `app/error.tsx` / `app/not-found.tsx` — unhandled errors and 404s use
-  Next.js's generic default pages.
-- Driver/pharmacy portals still query Supabase directly from the browser
-  rather than through server actions like the admin portal does. RLS now
-  scopes this correctly, but routing through server actions would be
-  stronger defense in depth.
+## Notes / things I didn't add
+- The designated time is informational for the driver - it doesn't block
+  starting/completing a stop early or late, and it doesn't change stop
+  ordering. If you'd rather it enforce sequencing (e.g. force this stop
+  first) or gate something, let me know and I can add that.
+- Copying an existing route ("Copy" on the calendar) doesn't carry over
+  priority/time from the original, since a copy is usually a different
+  date/context - easy to change if you'd rather it did.
