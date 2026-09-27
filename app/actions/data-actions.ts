@@ -2116,7 +2116,7 @@ export async function getDeliverySignatureUrl(stopId: string, signatureType: 'de
 
   const { data: stop, error: stopError } = await supabase
     .from('route_stops')
-    .select('signature_path, return_signature_path, pharmacy_id')
+    .select('signature_path, return_signature_path, pharmacy_id, routes(driver_id)')
     .eq('id', stopId)
     .single()
 
@@ -2125,7 +2125,14 @@ export async function getDeliverySignatureUrl(stopId: string, signatureType: 'de
   const path = signatureType === 'return' ? stop.return_signature_path : stop.signature_path
   if (!path) throw new Error('No signature on file for this delivery')
 
-  if (role !== 'admin') {
+  if (role === 'driver') {
+    // A driver may only view the signature for a delivery on their own
+    // route - everyone else's authorization below still applies unchanged.
+    const routeRow: any = Array.isArray((stop as any).routes) ? (stop as any).routes[0] : (stop as any).routes
+    if (routeRow?.driver_id !== userId) {
+      throw new Error('Forbidden: You do not have access to this delivery')
+    }
+  } else if (role !== 'admin') {
     const { data: pharmacyUser } = await supabase
       .from('pharmacy_users')
       .select('pharmacy_id')
@@ -2144,6 +2151,86 @@ export async function getDeliverySignatureUrl(stopId: string, signatureType: 'de
   if (urlError) throw urlError
 
   return signedUrlData.signedUrl
+}
+
+export async function getMyDeliveryDetails(stopId: number) {
+  const { userId, role } = await verifyAuth()
+
+  if (role !== 'driver') {
+    throw new Error('Forbidden: driver account required')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: stop, error: stopError } = await supabase
+    .from('route_stops')
+    .select(
+      `id, dropoff_address, status, recipient_name, notes, signature_path, return_signature_path,
+       return_confirmed_by, return_confirmed_at, actual_delivery_time, photo_paths,
+       routes(id, name, driver_id), pharmacies(name)`,
+    )
+    .eq('id', stopId)
+    .single()
+
+  if (stopError) throw stopError
+
+  const routeRow: any = Array.isArray((stop as any).routes) ? (stop as any).routes[0] : (stop as any).routes
+  if (routeRow?.driver_id !== userId) {
+    throw new Error('This delivery is not assigned to you')
+  }
+  const pharmacyRow: any = Array.isArray((stop as any).pharmacies) ? (stop as any).pharmacies[0] : (stop as any).pharmacies
+
+  // The route_stops row only ever holds the CURRENT outcome (it gets
+  // overwritten if a failed delivery is later returned to the pharmacy),
+  // but the exact time and GPS position of that outcome live on the
+  // matching delivery_logs entry instead - so pull the most recent one for
+  // this stop rather than trying to reconstruct it from route_stops alone.
+  const { data: logRow } = await supabase
+    .from('delivery_logs')
+    .select('latitude, longitude, notes, timestamp, created_at')
+    .eq('route_stop_id', stopId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const eventDate = logRow?.timestamp || logRow?.created_at || stop.actual_delivery_time || null
+
+  // Photos are private storage objects, same as the signature - hand back
+  // short-lived signed URLs for each one rather than a raw path the client
+  // can't do anything with.
+  const photoPaths: string[] = Array.isArray(stop.photo_paths) ? stop.photo_paths : []
+  const photoUrls = (
+    await Promise.all(
+      photoPaths.map(async (path) => {
+        const { data, error } = await supabase.storage.from('proof-of-delivery').createSignedUrl(path, 3600)
+        return error ? null : data.signedUrl
+      }),
+    )
+  ).filter((url): url is string => !!url)
+
+  const status = stop.status === 'delivered' ? 'completed' : stop.status
+
+  return {
+    routeStopId: stop.id,
+    routeName: routeRow?.name || 'Unknown Route',
+    pharmacy: pharmacyRow?.name || 'Unknown Pharmacy',
+    dropoffAddress: stop.dropoff_address,
+    status,
+    date: eventDate
+      ? new Date(eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'N/A',
+    time: eventDate ? new Date(eventDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+    recipientName: stop.recipient_name || null,
+    deliveryNotes: status === 'completed' ? stop.notes || null : null,
+    failureReason: status === 'failed' ? stop.notes || logRow?.notes || 'No reason provided' : null,
+    hasSignature: !!stop.signature_path,
+    hasReturnSignature: !!stop.return_signature_path,
+    returnConfirmedBy: stop.return_confirmed_by || null,
+    returnConfirmedAt: stop.return_confirmed_at ? new Date(stop.return_confirmed_at).toLocaleString() : null,
+    photoUrls,
+    latitude: logRow?.latitude ?? null,
+    longitude: logRow?.longitude ?? null,
+  }
 }
 
 export async function getDispatchConversations() {

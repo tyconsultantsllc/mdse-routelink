@@ -101,6 +101,13 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
             </div>
           )}
 
+          {delivery.status === "completed" && delivery.deliveryNotes && (
+            <div>
+              <p className="text-xs text-muted-foreground">Delivery Notes</p>
+              <p className="font-medium">{delivery.deliveryNotes}</p>
+            </div>
+          )}
+
           {delivery.status === "failed" && delivery.failureReason && (
             <div>
               <p className="text-xs text-muted-foreground">Failure Reason</p>
@@ -161,6 +168,25 @@ export function DeliveryDetailsModal({ open, onOpenChange, delivery }: DeliveryD
                 alt="Delivery signature"
                 className="w-full rounded-md border bg-white"
               />
+            </div>
+          )}
+
+          {Array.isArray(delivery.photoUrls) && delivery.photoUrls.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">
+                Photo{delivery.photoUrls.length > 1 ? "s" : ""}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {delivery.photoUrls.map((url: string, i: number) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={url || "/placeholder.svg"}
+                      alt={`Delivery photo ${i + 1}`}
+                      className="w-full aspect-square object-cover rounded-md border"
+                    />
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

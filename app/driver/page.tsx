@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { Truck, MapPin, Clock, Navigation, Camera, FileText, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays, ScanLine } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from "react"
+import { Truck, MapPin, Clock, Navigation, Eye, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays, ScanLine, WifiOff, RefreshCw } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { DeliveryConfirmationModal, type DeliveryConfirmationData } from "@/components/delivery-confirmation-modal"
+import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { useRouter } from 'next/navigation'
@@ -22,6 +23,13 @@ import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
 import { FailDeliveryModal } from "@/components/fail-delivery-modal"
 import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog"
 import { AddressWithUnit } from "@/components/address-with-unit"
+import {
+  enqueueOfflineAction,
+  getQueuedActions,
+  deleteQueuedAction,
+  countQueuedActions,
+  isNetworkError,
+} from "@/lib/offline-queue"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -85,6 +93,11 @@ export default function DriverTrackingPage() {
   const [returnsDialogOpen, setReturnsDialogOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [unconfirmedAlertDismissed, setUnconfirmedAlertDismissed] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
+  const [deliveryDetailsOpen, setDeliveryDetailsOpen] = useState(false)
+  const [deliveryDetails, setDeliveryDetails] = useState<any>(null)
+  const syncingRef = useRef(false)
 
   useEffect(() => {
     fetchDriverRoutes()
@@ -95,6 +108,40 @@ export default function DriverTrackingPage() {
     const interval = setInterval(fetchDriverRoutes, 20000)
     return () => clearInterval(interval)
   }, [])
+
+  // Actions taken while offline (or when a request fails because signal
+  // just dropped) are queued locally instead of being lost - this picks
+  // them back up as soon as the browser reports we're connected again.
+  useEffect(() => {
+    setIsOnline(navigator.onLine)
+    refreshPendingSyncCount()
+    if (navigator.onLine) syncPendingActions()
+
+    const handleOnline = () => {
+      setIsOnline(true)
+      syncPendingActions()
+    }
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
+  // navigator.onLine can report "online" even when the connection is too
+  // weak for requests to actually succeed, so anything still queued also
+  // gets a periodic retry rather than waiting only for the browser's own
+  // online event, which may never fire in that situation.
+  useEffect(() => {
+    if (pendingSyncCount === 0) return
+    const interval = setInterval(() => {
+      if (navigator.onLine) syncPendingActions()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [pendingSyncCount])
 
   useEffect(() => {
     // Preview whichever route the driver is actually working, falling back
@@ -227,6 +274,56 @@ export default function DriverTrackingPage() {
     }
   }
 
+  const refreshPendingSyncCount = async () => {
+    setPendingSyncCount(await countQueuedActions())
+  }
+
+  // Replays queued actions in the order they were recorded. Stops at the
+  // first one that still fails rather than skipping it - that keeps a
+  // later action from landing before an earlier one it might depend on
+  // (e.g. confirming a delivery before that stop was ever started), and
+  // the stuck item is simply retried again on the next pass instead of
+  // being dropped.
+  const syncPendingActions = async () => {
+    if (syncingRef.current) return
+    syncingRef.current = true
+    try {
+      const actions = await getQueuedActions()
+      if (actions.length === 0) return
+
+      let syncedAny = false
+      for (const action of actions) {
+        try {
+          if (action.type === "startStop") {
+            await startStop(action.payload.routeId, action.payload.stopId, action.payload.isFirstStopOnRoute)
+          } else if (action.type === "confirmDelivery") {
+            await confirmDeliveryStop(action.payload)
+          } else if (action.type === "failDelivery") {
+            await failDeliveryStop(action.payload)
+          } else if (action.type === "scan") {
+            const { recordScan } = await import("@/app/actions/data-actions")
+            await recordScan(action.payload.stopId, action.payload.barcode, action.payload.stage)
+          }
+          await deleteQueuedAction(action.id)
+          syncedAny = true
+        } catch (error) {
+          if (!isNetworkError(error)) {
+            console.error("Offline action failed to sync (will retry next time):", action.type, error)
+          }
+          break
+        }
+      }
+
+      await refreshPendingSyncCount()
+      if (syncedAny) {
+        toast({ title: "Synced", description: "Your offline updates have been saved." })
+        fetchDriverRoutes()
+      }
+    } finally {
+      syncingRef.current = false
+    }
+  }
+
   const handleConfirmDelivery = (route: Route, stop: RouteStop) => {
     setSelectedRoute(route)
     setSelectedStop(stop)
@@ -242,17 +339,17 @@ export default function DriverTrackingPage() {
   const handleDeliveryFailed = async (reason: string) => {
     if (!selectedStop || !selectedRoute || !driverId) return
 
-    try {
-      await failDeliveryStop({
-        stopId: selectedStop.id,
-        routeId: selectedRoute.id,
-        pharmacyId: selectedStop.pharmacyId,
-        driverId,
-        reason,
-        latitude: currentLocation.lat,
-        longitude: currentLocation.lng,
-      })
+    const payload = {
+      stopId: selectedStop.id,
+      routeId: selectedRoute.id,
+      pharmacyId: selectedStop.pharmacyId,
+      driverId,
+      reason,
+      latitude: currentLocation.lat,
+      longitude: currentLocation.lng,
+    }
 
+    const applyLocally = () => {
       setRoutes((prev) =>
         prev.map((route) =>
           route.id === selectedRoute.id
@@ -265,28 +362,41 @@ export default function DriverTrackingPage() {
             : route,
         ),
       )
+    }
 
+    try {
+      await failDeliveryStop(payload)
+      applyLocally()
       toast({
         title: "Delivery Marked Failed",
         description: `Recorded: ${reason}`,
       })
     } catch (error) {
-      console.error("Error recording failed delivery:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to record delivery failure",
-        variant: "destructive",
-      })
+      if (isNetworkError(error)) {
+        await enqueueOfflineAction("failDelivery", payload)
+        await refreshPendingSyncCount()
+        applyLocally()
+        toast({
+          title: "Saved offline",
+          description: "No connection right now - this will sync automatically once you're back online.",
+        })
+      } else {
+        console.error("Error recording failed delivery:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to record delivery failure",
+          variant: "destructive",
+        })
+      }
     } finally {
       setFailModalOpen(false)
     }
   }
 
   const handleStartStop = async (route: Route, stop: RouteStop) => {
-    try {
-      const isFirstStopOnRoute = route.status === "pending"
-      await startStop(route.id, stop.id, isFirstStopOnRoute)
+    const isFirstStopOnRoute = route.status === "pending"
 
+    const applyLocally = () => {
       setRoutes((prev) =>
         prev.map((r) =>
           r.id === route.id
@@ -309,18 +419,32 @@ export default function DriverTrackingPage() {
             : r,
         ),
       )
+    }
 
+    try {
+      await startStop(route.id, stop.id, isFirstStopOnRoute)
+      applyLocally()
       toast({
         title: "Stop Started",
         description: `Heading to ${stop.pharmacyName}`,
       })
     } catch (error) {
-      console.error("Error starting stop:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start stop",
-        variant: "destructive",
-      })
+      if (isNetworkError(error)) {
+        await enqueueOfflineAction("startStop", { routeId: route.id, stopId: stop.id, isFirstStopOnRoute })
+        await refreshPendingSyncCount()
+        applyLocally()
+        toast({
+          title: "Saved offline",
+          description: "No connection right now - this will sync automatically once you're back online.",
+        })
+      } else {
+        console.error("Error starting stop:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to start stop",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -343,12 +467,21 @@ export default function DriverTrackingPage() {
         })
       }
     } catch (error) {
-      console.error("Error recording scan:", error)
-      toast({
-        title: "Scan not recorded",
-        description: error instanceof Error ? error.message : "Could not record this scan",
-        variant: "destructive",
-      })
+      if (isNetworkError(error)) {
+        await enqueueOfflineAction("scan", { stopId, barcode, stage })
+        await refreshPendingSyncCount()
+        toast({
+          title: "Saved offline",
+          description: "No connection right now - this scan will be checked automatically once you're back online.",
+        })
+      } else {
+        console.error("Error recording scan:", error)
+        toast({
+          title: "Scan not recorded",
+          description: error instanceof Error ? error.message : "Could not record this scan",
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -384,20 +517,20 @@ export default function DriverTrackingPage() {
   const handleDeliveryConfirmed = async (data: DeliveryConfirmationData) => {
     if (!selectedStop || !selectedRoute || !driverId) return
 
-    try {
-      await confirmDeliveryStop({
-        stopId: selectedStop.id,
-        routeId: selectedRoute.id,
-        pharmacyId: selectedStop.pharmacyId,
-        driverId,
-        recipientName: data.recipientName,
-        notes: data.notes,
-        signatureDataUrl: data.signature,
-        photos: data.photos,
-        latitude: currentLocation.lat,
-        longitude: currentLocation.lng,
-      })
+    const payload = {
+      stopId: selectedStop.id,
+      routeId: selectedRoute.id,
+      pharmacyId: selectedStop.pharmacyId,
+      driverId,
+      recipientName: data.recipientName,
+      notes: data.notes,
+      signatureDataUrl: data.signature,
+      photos: data.photos,
+      latitude: currentLocation.lat,
+      longitude: currentLocation.lng,
+    }
 
+    const applyLocally = () => {
       setRoutes((prev) =>
         prev.map((route) =>
           route.id === selectedRoute.id
@@ -419,16 +552,48 @@ export default function DriverTrackingPage() {
             : route,
         ),
       )
+    }
 
+    try {
+      await confirmDeliveryStop(payload)
+      applyLocally()
       toast({
         title: "Delivery Confirmed",
         description: `Successfully confirmed delivery to ${selectedStop.dropoffAddress}`,
       })
     } catch (error) {
-      console.error("Error confirming delivery:", error)
+      if (isNetworkError(error)) {
+        // The photos/signature ride along as base64 strings in the queued
+        // payload itself - IndexedDB (unlike localStorage) comfortably
+        // holds that, so nothing is lost, just delayed until reconnected.
+        await enqueueOfflineAction("confirmDelivery", payload)
+        await refreshPendingSyncCount()
+        applyLocally()
+        toast({
+          title: "Saved offline",
+          description: "No connection right now - this will sync automatically once you're back online.",
+        })
+      } else {
+        console.error("Error confirming delivery:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to save delivery confirmation",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
+  const handleViewDeliveryDetails = async (stop: RouteStop) => {
+    try {
+      const { getMyDeliveryDetails } = await import("@/app/actions/data-actions")
+      const details = await getMyDeliveryDetails(stop.id)
+      setDeliveryDetails({ ...details, driver: "You" })
+      setDeliveryDetailsOpen(true)
+    } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save delivery confirmation",
+        title: "Couldn't load delivery details",
+        description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive",
       })
     }
@@ -729,6 +894,24 @@ export default function DriverTrackingPage() {
 
       <AnnouncementBanner />
 
+      {!isOnline && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-amber-800 text-sm">
+          <WifiOff className="h-4 w-4 flex-shrink-0" />
+          <span>
+            You're offline. Deliveries, failures, and scans you record now are saved on this device and will sync
+            automatically once you're back online.
+          </span>
+        </div>
+      )}
+      {isOnline && pendingSyncCount > 0 && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-blue-800 text-sm">
+          <RefreshCw className="h-4 w-4 flex-shrink-0 animate-spin" />
+          <span>
+            Syncing {pendingSyncCount} update{pendingSyncCount === 1 ? "" : "s"} recorded while you were offline...
+          </span>
+        </div>
+      )}
+
       <main>
         <div className="max-w-7xl mx-auto py-3 md:py-6 px-3 md:px-6 lg:px-8">
           <div className="space-y-4 md:space-y-6">
@@ -853,6 +1036,13 @@ export default function DriverTrackingPage() {
               {/* Routes Section */}
               <Card className="p-3 md:p-6">
                 <h2 className="text-base md:text-lg font-medium text-foreground mb-3 md:mb-4">My Routes</h2>
+                {loading ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">Loading your routes...</div>
+                ) : routes.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    No routes assigned right now - check back later or pull down to refresh.
+                  </div>
+                ) : (
                 <div className="space-y-4 md:space-y-6">
                   {routes.map((route) => {
                     const completedStops = route.stops.filter((s) => s.status === "completed").length
@@ -1055,14 +1245,15 @@ export default function DriverTrackingPage() {
                                     </>
                                   )}
                                   {stop.status === "completed" && (
-                                    <div className="flex gap-2">
-                                      <Button variant="ghost" size="icon" className="h-11 w-11">
-                                        <Camera className="h-5 w-5" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon" className="h-11 w-11">
-                                        <FileText className="h-5 w-5" />
-                                      </Button>
-                                    </div>
+                                    <Button
+                                      size="lg"
+                                      variant="outline"
+                                      onClick={() => handleViewDeliveryDetails(stop)}
+                                      className="min-h-[44px] flex-1 md:flex-none"
+                                    >
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      View Details
+                                    </Button>
                                   )}
                                 </div>
                               </div>
@@ -1073,6 +1264,7 @@ export default function DriverTrackingPage() {
                     )
                   })}
                 </div>
+                )}
               </Card>
             </div>
           </div>
@@ -1106,6 +1298,11 @@ export default function DriverTrackingPage() {
         onScan={handleScanResult}
         title={scanTarget?.stage === "pickup" ? "Scan Package - Pickup" : "Scan Package - Delivery"}
         description="Confirms you have the right package for this stop"
+      />
+      <DeliveryDetailsModal
+        open={deliveryDetailsOpen}
+        onOpenChange={setDeliveryDetailsOpen}
+        delivery={deliveryDetails}
       />
 
       {driverId && <DriverMessagingWidget driverId={driverId} />}
