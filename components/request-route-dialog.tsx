@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertTriangle, MapPin, X } from "lucide-react"
+import { AlertTriangle, MapPin, Star, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
 
@@ -21,6 +21,8 @@ interface PreviewStop {
   address: string
   lat: number | null
   lng: number | null
+  isPriority?: boolean
+  requestedTime?: string
 }
 
 export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestRouteDialogProps) {
@@ -121,6 +123,16 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
     setPreviewStops((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const handleToggleStopPriority = (index: number) => {
+    setPreviewStops((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, isPriority: !s.isPriority } : s)),
+    )
+  }
+
+  const handleSetStopTime = (index: number, time: string) => {
+    setPreviewStops((prev) => prev.map((s, i) => (i === index ? { ...s, requestedTime: time } : s)))
+  }
+
   const handleSubmit = async () => {
     if (previewStops.length === 0) {
       toast({ title: "No stops to submit", description: "Parse a link or enter addresses first.", variant: "destructive" })
@@ -130,7 +142,13 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
     try {
       const { createRouteRequest } = await import("@/app/actions/data-actions")
       await createRouteRequest({
-        stops: previewStops,
+        stops: previewStops.map((s) => ({
+          address: s.address,
+          lat: s.lat,
+          lng: s.lng,
+          isPriority: s.isPriority || false,
+          requestedTime: s.isPriority ? s.requestedTime || undefined : undefined,
+        })),
         isEmergency,
         sourceLink: linkText.trim() || null,
       })
@@ -200,20 +218,67 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
 
         {previewStops.length > 0 && (
           <div className="space-y-2 pt-2">
-            <Label>{previewStops.length} Stop{previewStops.length !== 1 ? "s" : ""}</Label>
+            <div className="flex items-center justify-between">
+              <Label>{previewStops.length} Stop{previewStops.length !== 1 ? "s" : ""}</Label>
+              <span className="text-xs text-muted-foreground">Click an address to flag it as priority</span>
+            </div>
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {previewStops.map((stop, index) => (
-                <div key={index} className="flex items-center justify-between gap-2 text-sm p-2 bg-muted/50 rounded">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                    <div className="min-w-0">
+                <div
+                  key={index}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleToggleStopPriority(index)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      handleToggleStopPriority(index)
+                    }
+                  }}
+                  className={`flex items-center justify-between gap-2 text-sm p-2 rounded cursor-pointer border transition-colors ${
+                    stop.isPriority ? "bg-amber-50 border-amber-300" : "bg-muted/50 border-transparent hover:border-muted-foreground/30"
+                  }`}
+                >
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    {stop.isPriority ? (
+                      <Star className="h-4 w-4 text-amber-600 fill-amber-500 shrink-0 mt-0.5" />
+                    ) : (
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
                       <p className="truncate">{stop.address}</p>
                       {stop.lat == null && (
                         <p className="text-xs text-destructive">Couldn't locate this address - an admin will need to fix it.</p>
                       )}
+                      {stop.isPriority && (
+                        <div
+                          className="flex items-center gap-2 mt-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Label htmlFor={`requested-time-${index}`} className="text-xs text-amber-700 whitespace-nowrap">
+                            Requested time:
+                          </Label>
+                          <input
+                            id={`requested-time-${index}`}
+                            type="time"
+                            step={900}
+                            value={stop.requestedTime || ""}
+                            onChange={(e) => handleSetStopTime(index, e.target.value)}
+                            className="h-7 rounded border border-amber-300 bg-background px-1.5 text-xs"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleRemoveStop(index)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleRemoveStop(index)
+                    }}
+                  >
                     <X className="h-3 w-3" />
                   </Button>
                 </div>

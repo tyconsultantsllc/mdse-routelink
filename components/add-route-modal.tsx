@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { MapIcon, Plus, X, Sparkles } from 'lucide-react'
+import { MapIcon, Plus, X, Sparkles, Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -613,37 +613,43 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                 </div>
 
                 <div>
-                  <Label htmlFor={`dropoff-${index}`}>Dropoff Address *</Label>
-                  <AddressAutocompleteInput
-                    id={`dropoff-${index}`}
-                    placeholder="Start typing to search address..."
-                    value={stop.dropoffAddress}
-                    onChange={(value) => updateStop(index, "dropoffAddress", value)}
-                    required
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-end gap-3 pt-1">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`priority-${index}`}
-                      checked={!!stop.isPriority}
-                      onCheckedChange={(checked) => updateStopPriority(index, checked === true)}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <Label htmlFor={`dropoff-${index}`} className="mb-0">Dropoff Address *</Label>
+                    <button
+                      type="button"
+                      onClick={() => updateStopPriority(index, !stop.isPriority)}
+                      title="Click to flag this address as a priority stop"
+                      className={`flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5 transition-colors shrink-0 ${
+                        stop.isPriority
+                          ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                          : "bg-muted text-muted-foreground hover:bg-amber-50 hover:text-amber-700"
+                      }`}
+                    >
+                      <Star className={`h-3 w-3 ${stop.isPriority ? "fill-amber-500" : ""}`} />
+                      {stop.isPriority ? "Priority stop" : "Mark as priority"}
+                    </button>
+                  </div>
+                  <div className={stop.isPriority ? "rounded-md ring-2 ring-amber-300" : undefined}>
+                    <AddressAutocompleteInput
+                      id={`dropoff-${index}`}
+                      placeholder="Start typing to search address..."
+                      value={stop.dropoffAddress}
+                      onChange={(value) => updateStop(index, "dropoffAddress", value)}
+                      required
                     />
-                    <Label htmlFor={`priority-${index}`} className="cursor-pointer font-normal">
-                      Priority stop
-                    </Label>
                   </div>
                   {stop.isPriority && (
-                    <div>
-                      <Label htmlFor={`designated-time-${index}`}>Designated Delivery Time</Label>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Label htmlFor={`designated-time-${index}`} className="text-xs text-amber-700 whitespace-nowrap">
+                        Designated delivery time:
+                      </Label>
                       <Input
                         id={`designated-time-${index}`}
                         type="time"
                         step={900}
                         value={stop.designatedTime || ""}
                         onChange={(e) => updateStop(index, "designatedTime", e.target.value)}
-                        className="w-36"
+                        className="w-36 h-8"
                       />
                     </div>
                   )}

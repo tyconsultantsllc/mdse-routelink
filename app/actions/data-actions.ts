@@ -1695,7 +1695,13 @@ export async function broadcastMessageToAllDrivers(content: string) {
 }
 
 export async function createRouteRequest(input: {
-  stops: Array<{ address: string; lat?: number | null; lng?: number | null }>
+  stops: Array<{
+    address: string
+    lat?: number | null
+    lng?: number | null
+    isPriority?: boolean
+    requestedTime?: string | null
+  }>
   isEmergency: boolean
   sourceLink?: string | null
 }) {
@@ -1802,16 +1808,27 @@ export async function assignRouteRequestToDriver(input: {
   if (request.status !== 'pending') throw new Error('This request has already been resolved')
 
   const pharmacyAddress = (request as any).pharmacies?.address || ''
-  const stops = (request.stops as Array<{ address: string; lat?: number | null; lng?: number | null }>).map(
-    (s, index) => ({
-      pharmacyId: request.pharmacy_id,
-      pickupAddress: pharmacyAddress,
-      dropoffAddress: s.address,
-      dropoffLatitude: s.lat ?? null,
-      dropoffLongitude: s.lng ?? null,
-      sequence: index + 1,
-    }),
-  )
+  const stops = (
+    request.stops as Array<{
+      address: string
+      lat?: number | null
+      lng?: number | null
+      isPriority?: boolean
+      requestedTime?: string | null
+    }>
+  ).map((s, index) => ({
+    pharmacyId: request.pharmacy_id,
+    pickupAddress: pharmacyAddress,
+    dropoffAddress: s.address,
+    dropoffLatitude: s.lat ?? null,
+    dropoffLongitude: s.lng ?? null,
+    sequence: index + 1,
+    // Carries the pharmacy's own priority/time flag on this address through
+    // to the real route_stops row, so it isn't lost the moment an admin
+    // converts the request into an actual route.
+    isPriority: s.isPriority || false,
+    designatedTime: s.requestedTime || null,
+  }))
 
   const route = await createRoute({
     name: input.routeName,

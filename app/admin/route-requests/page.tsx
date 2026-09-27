@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { AlertTriangle, MapPin, ExternalLink, X } from "lucide-react"
+import { AlertTriangle, MapPin, ExternalLink, Star, X } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -74,8 +74,19 @@ export default function RouteRequestsPage() {
           ) : (
             <div className="space-y-3">
               {requests.map((request) => {
-                const stops = (request.stops as Array<{ address: string; lat: number | null; lng: number | null }>) || []
+                const stops =
+                  (request.stops as Array<{
+                    address: string
+                    lat: number | null
+                    lng: number | null
+                    isPriority?: boolean
+                    requestedTime?: string | null
+                  }>) || []
                 const missingCoords = stops.filter((s) => s.lat == null).length
+                const formatRequestedTime = (time: string) => {
+                  const d = new Date(`1970-01-01T${time}`)
+                  return isNaN(d.getTime()) ? time : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+                }
                 return (
                   <Card
                     key={request.id}
@@ -104,9 +115,18 @@ export default function RouteRequestsPage() {
                         </p>
                         <div className="space-y-1">
                           {stops.map((s, i) => (
-                            <p key={i} className="text-xs text-muted-foreground flex items-center gap-1">
-                              <MapPin className="h-3 w-3 shrink-0" />
+                            <p key={i} className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                              {s.isPriority ? (
+                                <Star className="h-3 w-3 shrink-0 text-amber-600 fill-amber-500" />
+                              ) : (
+                                <MapPin className="h-3 w-3 shrink-0" />
+                              )}
                               {s.address}
+                              {s.isPriority && (
+                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[10px] px-1.5 py-0">
+                                  Priority{s.requestedTime ? ` • ${formatRequestedTime(s.requestedTime)}` : ""}
+                                </Badge>
+                              )}
                             </p>
                           ))}
                         </div>
