@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, XCircle, TrendingUp, LogOut, AlertCircle, Route as RouteIcon, Settings as SettingsIcon } from 'lucide-react'
+import { Package, Clock, CheckCircle, XCircle, Undo2, TrendingUp, LogOut, AlertCircle, Route as RouteIcon, Settings as SettingsIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -618,6 +618,8 @@ export default function PharmacyDashboard() {
                             >
                               {(stop.status as string) === "failed" ? (
                                 <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+                              ) : (stop.status as string) === "returned" ? (
+                                <Undo2 className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
                               ) : (
                                 <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0 mt-0.5" />
                               )}
