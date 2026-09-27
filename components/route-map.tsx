@@ -54,6 +54,20 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "#6b7280",
 }
 
+// A small numbered pin instead of Leaflet's plain default marker, so each
+// stop's position in the route's order (1, 2, 3...) is visible directly on
+// the map - without it, a route with several stops is just a wall of
+// identical-looking pins with no visual sense of where it starts or ends.
+function numberedDivIcon(label: string, opts: { bg: string; border: string; size?: number }) {
+  const size = opts.size ?? 26
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${opts.bg};border:2px solid ${opts.border};display:flex;align-items:center;justify-content:center;color:#fff;font-size:${size <= 22 ? 10 : 12}px;line-height:1;font-weight:700;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,0.45);">${label}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
 export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDrawSummary, routes = [] }: RouteMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -182,23 +196,31 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
           const meta = pointMeta[index]
           const stop = meta?.stop
           const label = stop?.pharmacies?.name || "Stop"
+          const stopNumber = stop?.stop_order
+          const stopLabel = stopNumber != null ? `Stop ${stopNumber}` : "Stop"
+
           if (meta?.isPriorityDropoff) {
             const timeLine = stop?.designated_time
               ? `<br/>Requested for ${formatDesignatedTime(stop.designated_time)}`
               : ""
-            L.circleMarker(point, {
-              radius: 10,
-              color: "#b45309",
-              fillColor: "#f59e0b",
-              fillOpacity: 0.9,
-              weight: 2,
+            L.marker(point, {
+              icon: numberedDivIcon(stopNumber != null ? String(stopNumber) : "★", {
+                bg: "#f59e0b",
+                border: "#b45309",
+                size: 28,
+              }),
             })
               .addTo(map)
-              .bindPopup(`<strong>${route.name}</strong><br/>⭐ Priority - ${label}${timeLine}`)
+              .bindPopup(`<strong>${route.name}</strong><br/>⭐ Priority - ${stopLabel} - ${label}${timeLine}`)
           } else {
-            L.marker(point)
+            L.marker(point, {
+              icon: numberedDivIcon(stopNumber != null ? String(stopNumber) : "", {
+                bg: color,
+                border: "#ffffff",
+              }),
+            })
               .addTo(map)
-              .bindPopup(`<strong>${route.name}</strong><br/>${label}`)
+              .bindPopup(`<strong>${route.name}</strong><br/>${stopLabel} - ${label}`)
           }
         })
 
