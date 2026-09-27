@@ -210,6 +210,24 @@ export async function deleteUser(userId: string) {
   if (error) throw error
 }
 
+export async function getPharmacyUsers(pharmacyId: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('pharmacy_users')
+    .select('id, notifications_email, notifications_sms, users(email, first_name, last_name, created_at)')
+    .eq('pharmacy_id', pharmacyId)
+    .order('id')
+
+  if (error) throw error
+  return data
+}
+
 export async function adminUpdateUserEmail(userId: string, newEmail: string) {
   const { role } = await verifyAuth()
 
@@ -689,9 +707,10 @@ export async function updateUser(userId: string, updates: {
   licenseNumber?: string
   role?: string
   region?: string
+  avatarUrl?: string
 }) {
   const { role } = await verifyAuth()
-  
+
   if (role !== 'admin') {
     throw new Error('Forbidden: Admin access required')
   }
@@ -705,6 +724,7 @@ export async function updateUser(userId: string, updates: {
       first_name: updates.firstName,
       last_name: updates.lastName,
       phone: updates.phone,
+      avatar_url: updates.avatarUrl,
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Truck, CheckCircle, Clock } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -56,6 +56,10 @@ export default function AdminDashboard() {
   const [completedRoutesCount, setCompletedRoutesCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [unassignedRoutes, setUnassignedRoutes] = useState<Route[]>([])
+  // Which urgent-and-unassigned route ids we've already toasted about, so the
+  // 15s poll doesn't re-fire the same "urgent" alert forever - only a route
+  // that's newly urgent-and-unassigned since the last check gets a toast.
+  const notifiedUrgentRouteIds = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     fetchDashboardData()
@@ -213,16 +217,22 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    if (unassignedRoutes.length > 0) {
-      const urgentRoutes = unassignedRoutes.filter((r) => r.priority === "urgent")
-      if (urgentRoutes.length > 0) {
-        toast({
-          title: "Urgent: Unassigned Routes",
-          description: `${urgentRoutes.length} urgent route(s) need driver assignment`,
-          variant: "destructive",
-        })
-      }
+    const urgentRoutes = unassignedRoutes.filter((r) => r.priority === "urgent")
+    const newlyUrgent = urgentRoutes.filter((r) => !notifiedUrgentRouteIds.current.has(r.id))
+
+    if (newlyUrgent.length > 0) {
+      toast({
+        title: "Urgent: Unassigned Routes",
+        description: `${newlyUrgent.length} new urgent route(s) need driver assignment`,
+        variant: "destructive",
+      })
     }
+
+    // Remember every urgent route currently unassigned (not just the new
+    // ones) so it doesn't get re-toasted next poll, and forget any that
+    // aren't urgent/unassigned anymore so it can notify again if it comes
+    // back later.
+    notifiedUrgentRouteIds.current = new Set(urgentRoutes.map((r) => r.id))
   }, [unassignedRoutes, toast])
 
   const getPriorityColor = (priority: string) => {
@@ -405,7 +415,6 @@ export default function AdminDashboard() {
                           </span>
                         )}
                         <span className="text-xs md:text-sm text-muted-foreground">{delivery.time}</span>
-                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Completed</Badge>
                       </div>
                     </div>
                   </div>

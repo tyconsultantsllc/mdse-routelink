@@ -35,7 +35,11 @@ export default function RouteRequestsPage() {
     }
   }
 
-  const handleDismiss = async (requestId: string) => {
+  const handleDismiss = async (requestId: string, pharmacyName: string) => {
+    // A misclick here used to permanently drop a pending pharmacy delivery
+    // request with no undo and no confirmation - matching the confirm()
+    // already used before deleting an announcement.
+    if (!confirm(`Dismiss this route request from ${pharmacyName}? This can't be undone.`)) return
     try {
       const { dismissRouteRequest } = await import("@/app/actions/data-actions")
       await dismissRouteRequest(requestId)
@@ -146,7 +150,11 @@ export default function RouteRequestsPage() {
                         <Button size="sm" onClick={() => setAssigning(request)}>
                           Assign Driver
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDismiss(request.id)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDismiss(request.id, request.pharmacies?.name || "this pharmacy")}
+                        >
                           <X className="h-4 w-4 mr-1" />
                           Dismiss
                         </Button>

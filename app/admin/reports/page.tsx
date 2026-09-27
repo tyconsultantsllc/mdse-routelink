@@ -23,11 +23,16 @@ import { getDashboardStats, getUsers, getPharmacies } from "@/app/actions/data-a
 import { calculateOnTimeRate, isDeliveryOnTime, DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES } from "@/lib/delivery-metrics"
 import { useToast } from "@/components/ui/use-toast"
 
+type DateRangeOption = "7days" | "30days" | "month" | "all"
+
 export default function Reports() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<any>(null)
   const [selectedRegion, setSelectedRegion] = useState("all")
+  // Was rendered but never wired to anything - every choice silently showed
+  // all-time numbers. Now actually filters the stats below.
+  const [dateRange, setDateRange] = useState<DateRangeOption>("all")
   const { toast } = useToast()
 
   const [gracePeriod, setGracePeriod] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
@@ -61,20 +66,80 @@ export default function Reports() {
   const driverRegionById = new Map(
     (stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, getDriverDetails(u)?.region]),
   )
-  const filteredLogs =
+  // Region filter only. Used as-is for the "Deliveries Over Time" chart below,
+  // which always shows the last 7 months regardless of the date-range quick
+  // filter - narrowing a multi-month trend chart down to "Last 7 Days" isn't
+  // useful, so that one chart intentionally ignores dateRange.
+  const regionFilteredLogs =
     selectedRegion === "all"
       ? stats?.logs || []
       : (stats?.logs || []).filter((log: any) => driverRegionById.get(log.driver_id) === selectedRegion)
 
-  const totalDeliveries = filteredLogs.length
-  const failedDeliveries = filteredLogs.filter((log: any) => log.action === 'failed').length
-  const successfulDeliveries = filteredLogs.filter((log: any) => log.action === 'delivered').length
+  // The date-range quick filter above the page: turns each option into an
+  // actual [start, end) window instead of being purely decorative.
+  const getRangeBounds = (range: DateRangeOption): { start: Date | null; end: Date } => {
+    const now = new Date()
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    if (range === "month") return { start: new Date(now.getFullYear(), now.getMonth(), 1), end }
+    if (range === "all") return { start: null, end }
+    const start = new Date(end)
+    start.setDate(start.getDate() - (range === "7days" ? 6 : 29))
+    start.setHours(0, 0, 0, 0)
+    return { start, end }
+  }
+  const currentBounds = getRangeBounds(dateRange)
+  // A "previous period" of the same duration immediately before the current
+  // one, so the trend lines below are a real computed comparison rather than
+  // a hardcoded string. Not exact calendar months for "This Month," but
+  // always an honest apples-to-apples comparison of two equal-length windows.
+  const previousBounds = currentBounds.start
+    ? (() => {
+        const durationMs = currentBounds.end.getTime() - currentBounds.start!.getTime()
+        const end = new Date(currentBounds.start!.getTime() - 1)
+        const start = new Date(end.getTime() - durationMs)
+        return { start, end }
+      })()
+    : null
+  const inRange = (log: any, bounds: { start: Date | null; end: Date }) => {
+    const t = new Date(log.timestamp).getTime()
+    return t <= bounds.end.getTime() && (bounds.start === null || t >= bounds.start.getTime())
+  }
+  const periodLogs = regionFilteredLogs.filter((log: any) => inRange(log, currentBounds))
+  const previousPeriodLogs = previousBounds ? regionFilteredLogs.filter((log: any) => inRange(log, previousBounds)) : null
+
+  const totalDeliveries = periodLogs.length
+  const failedDeliveries = periodLogs.filter((log: any) => log.action === 'failed').length
+  const successfulDeliveries = periodLogs.filter((log: any) => log.action === 'delivered').length
 
   const routesById = new Map<string, { end_time: string | null }>(
     (stats?.routes || []).map((r: any) => [r.id, { end_time: r.end_time }]),
   )
-  const onTimeRate = filteredLogs.length ? calculateOnTimeRate(filteredLogs, routesById, gracePeriod) : 0
+  const onTimeRate = periodLogs.length ? calculateOnTimeRate(periodLogs, routesById, gracePeriod) : 0
   const avgDeliveryTime = 0 // no reliable duration data source yet - see notes on the Performance page
+
+  // Real "vs previous period" trend text for a stat card, or null when
+  // there's nothing honest to compare against (All Time selected, so there
+  // is no bounded previous period, or that previous period had zero
+  // deliveries and a percentage change would be undefined/infinite).
+  const formatTrend = (current: number, previous: number | null) => {
+    if (previous === null || previous === 0) return null
+    const change = Math.round(((current - previous) / previous) * 100)
+    if (change === 0) return { text: "No change from previous period", positive: true }
+    return { text: `${change > 0 ? "+" : ""}${change}% from previous period`, positive: change > 0 }
+  }
+  const deliveriesTrend = formatTrend(totalDeliveries, previousPeriodLogs ? previousPeriodLogs.length : null)
+  const previousOnTimeRate =
+    previousPeriodLogs && previousPeriodLogs.length ? calculateOnTimeRate(previousPeriodLogs, routesById, gracePeriod) : null
+  // On-time rate is itself a percentage, so the honest comparison is a
+  // percentage-POINT difference, not a "percent change of a percent".
+  const onTimeTrend =
+    previousOnTimeRate === null
+      ? null
+      : (() => {
+          const diff = Math.round(onTimeRate - previousOnTimeRate)
+          if (diff === 0) return { text: "No change from previous period", positive: true }
+          return { text: `${diff > 0 ? "+" : ""}${diff} pts from previous period`, positive: diff > 0 }
+        })()
 
   // Real month-by-month counts from actual delivery log timestamps, instead
   // of hardcoded zeros with all volume dumped into a single fake month
@@ -82,14 +147,14 @@ export default function Reports() {
   const now = new Date()
   const deliveriesData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1)
-    const count = filteredLogs.filter((log: any) => {
+    const count = regionFilteredLogs.filter((log: any) => {
       const logDate = new Date(log.timestamp)
       return logDate.getFullYear() === d.getFullYear() && logDate.getMonth() === d.getMonth()
     }).length
     return { month: monthNames[d.getMonth()], deliveries: count }
   })
 
-  const onTimeDeliveredCount = filteredLogs.filter(
+  const onTimeDeliveredCount = periodLogs.filter(
     (log: any) => log.action === 'delivered' && isDeliveryOnTime(log.timestamp, routesById.get(log.route_id)?.end_time, gracePeriod) === true,
   ).length
   const lateDeliveredCount = successfulDeliveries - onTimeDeliveredCount
@@ -104,14 +169,14 @@ export default function Reports() {
     ?.filter((u: any) => u.role === 'driver' && (selectedRegion === "all" || getDriverDetails(u)?.region === selectedRegion))
     .map((driver: any) => ({
       name: `${driver.first_name} ${driver.last_name}`,
-      deliveries: filteredLogs.filter((log: any) => log.driver_id === driver.id).length
+      deliveries: periodLogs.filter((log: any) => log.driver_id === driver.id).length
     })) || []
 
   const pharmaciesData = (stats?.pharmacies || [])
     .filter((pharmacy: any) => selectedRegion === "all" || pharmacy.region === selectedRegion)
     .map((pharmacy: any) => ({
       name: pharmacy.name,
-      deliveries: filteredLogs.filter((log: any) => log.pharmacy_id === pharmacy.id).length,
+      deliveries: periodLogs.filter((log: any) => log.pharmacy_id === pharmacy.id).length,
     }))
 
   const driverNameById = new Map((stats?.users || []).filter((u: any) => u.role === 'driver').map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]))
@@ -124,7 +189,7 @@ export default function Reports() {
       { label: "Avg Delivery Time", value: `${avgDeliveryTime} min` },
     ],
     headers: ["Date", "Driver", "Pharmacy", "Status"],
-    rows: filteredLogs.map((log: any) => [
+    rows: periodLogs.map((log: any) => [
       new Date(log.timestamp).toLocaleString(),
       driverNameById.get(log.driver_id) || "Unknown",
       pharmacyNameById.get(log.pharmacy_id) || "Unknown",
@@ -142,7 +207,7 @@ export default function Reports() {
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
           <AdminHeader title="Analytics Reports">
-            <Select defaultValue="all">
+            <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRangeOption)}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
@@ -184,11 +249,14 @@ export default function Reports() {
                           <div className="ml-4 flex-1">
                             <p className="text-sm font-medium text-muted-foreground">Total Deliveries</p>
                             <p className="text-2xl font-bold text-foreground">{totalDeliveries.toLocaleString()}</p>
-                            {/* */}
-                            <div className="flex items-center text-xs text-green-600 mt-1">
-                              <TrendingUp className="h-3 w-3 mr-1" />
-                              <span>12% from last month</span>
-                            </div>
+                            {deliveriesTrend && (
+                              <div
+                                className={`flex items-center text-xs mt-1 ${deliveriesTrend.positive ? "text-green-600" : "text-red-600"}`}
+                              >
+                                <TrendingUp className={`h-3 w-3 mr-1 ${deliveriesTrend.positive ? "" : "rotate-180"}`} />
+                                <span>{deliveriesTrend.text}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -205,11 +273,14 @@ export default function Reports() {
                           <div className="ml-4 flex-1">
                             <p className="text-sm font-medium text-muted-foreground">On-Time Rate</p>
                             <p className="text-2xl font-bold text-foreground">{onTimeRate}%</p>
-                            {/* */}
-                            <div className="flex items-center text-xs text-green-600 mt-1">
-                              <TrendingUp className="h-3 w-3 mr-1" />
-                              <span>3% from last month</span>
-                            </div>
+                            {onTimeTrend && (
+                              <div
+                                className={`flex items-center text-xs mt-1 ${onTimeTrend.positive ? "text-green-600" : "text-red-600"}`}
+                              >
+                                <TrendingUp className={`h-3 w-3 mr-1 ${onTimeTrend.positive ? "" : "rotate-180"}`} />
+                                <span>{onTimeTrend.text}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -225,11 +296,11 @@ export default function Reports() {
                           </div>
                           <div className="ml-4 flex-1">
                             <p className="text-sm font-medium text-muted-foreground">Avg Delivery Time</p>
-                            <p className="text-2xl font-bold text-foreground">28 min</p>
-                            <div className="flex items-center text-xs text-red-600 mt-1">
-                              <TrendingUp className="h-3 w-3 mr-1" />
-                              <span>2 min from last month</span>
-                            </div>
+                            {/* No reliable duration data source yet (same
+                                honest N/A used on the Performance page) -
+                                this used to show a hardcoded "28 min" with a
+                                fake "2 min from last month" trend. */}
+                            <p className="text-2xl font-bold text-foreground">N/A</p>
                           </div>
                         </div>
                       </Card>

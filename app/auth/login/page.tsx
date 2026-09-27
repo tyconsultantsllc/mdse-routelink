@@ -6,7 +6,6 @@ import { Truck, Mail, Lock } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
 import { useRouter } from 'next/navigation'
@@ -16,7 +15,6 @@ import { getUserRole } from "@/app/auth/actions"
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [remember, setRemember] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -133,17 +131,14 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="remember"
-                  checked={remember}
-                  onCheckedChange={(checked) => setRemember(checked as boolean)}
-                />
-                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">
-                  Remember me
-                </Label>
-              </div>
+            {/* "Remember me" used to sit here as a checkbox that did nothing -
+                sessions already always persist (lib/supabase/client.ts sets
+                persistSession: true unconditionally), so the box could never
+                actually change how long a session lasts. Making it real
+                would mean switching between localStorage and sessionStorage
+                per-login, which the shared client singleton doesn't support
+                today - removed rather than leave a control with no effect. */}
+            <div className="flex justify-end">
               <Link href="/auth/forgot-password" className="text-sm font-medium text-primary hover:text-primary/80">
                 Forgot password?
               </Link>

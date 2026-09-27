@@ -5,12 +5,25 @@ import { MapPin } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { getPharmacies, getUsers } from "@/app/actions/data-actions"
 import { getDriverDetails } from "@/lib/region-utils"
+
+const regionLabel = (v: string) =>
+  v === "none" ? "No region" : v === "socal" ? "Southern California" : v === "minnesota" ? "Minnesota" : v
 
 export default function BulkRegionAssignPage() {
   const [pharmacies, setPharmacies] = useState<any[]>([])
@@ -19,6 +32,11 @@ export default function BulkRegionAssignPage() {
   const [driverRegions, setDriverRegions] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  // A "Save All" here silently wrote every changed region straight to the
+  // database with no way to review what was about to change - a fat-fingered
+  // dropdown plus one click could reassign dozens of pharmacies/drivers at
+  // once. Now it opens a preview of the exact changes first.
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -45,20 +63,19 @@ export default function BulkRegionAssignPage() {
     }
   }
 
+  // Only pharmacies/drivers whose region actually changed - no need to
+  // touch, or show a preview row for, anything that's already correct.
+  const changedPharmacies = pharmacies.filter((p) => (pharmacyRegions[p.id] || "none") !== (p.region || "none"))
+  const changedDrivers = drivers.filter(
+    (d) => (driverRegions[d.id] || "none") !== (getDriverDetails(d)?.region || "none"),
+  )
+  const pendingChangeCount = changedPharmacies.length + changedDrivers.length
+
   const handleSaveAll = async () => {
     setIsSaving(true)
     try {
       const supabase = createClient()
       const { updateUser } = await import("@/app/actions/data-actions")
-
-      // Only pharmacies/drivers whose region actually changed get written -
-      // no need to touch rows that are already correct.
-      const changedPharmacies = pharmacies.filter(
-        (p) => (pharmacyRegions[p.id] || "none") !== (p.region || "none"),
-      )
-      const changedDrivers = drivers.filter(
-        (d) => (driverRegions[d.id] || "none") !== (getDriverDetails(d)?.region || "none"),
-      )
 
       for (const pharmacy of changedPharmacies) {
         const region = pharmacyRegions[pharmacy.id]
@@ -78,13 +95,14 @@ export default function BulkRegionAssignPage() {
 
       toast({
         title: "Saved",
-        description: `Updated ${changedPharmacies.length + changedDrivers.length} record${changedPharmacies.length + changedDrivers.length === 1 ? "" : "s"}.`,
+        description: `Updated ${pendingChangeCount} record${pendingChangeCount === 1 ? "" : "s"}.`,
       })
       fetchData()
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save changes", variant: "destructive" })
     } finally {
       setIsSaving(false)
+      setConfirmOpen(false)
     }
   }
 
@@ -114,8 +132,8 @@ export default function BulkRegionAssignPage() {
                 Set the region for every pharmacy and driver at once, instead of editing them one at a time.
               </p>
             </div>
-            <Button onClick={handleSaveAll} disabled={isSaving || loading}>
-              {isSaving ? "Saving..." : "Save All"}
+            <Button onClick={() => setConfirmOpen(true)} disabled={isSaving || loading || pendingChangeCount === 0}>
+              {isSaving ? "Saving..." : pendingChangeCount > 0 ? `Save All (${pendingChangeCount})` : "Save All"}
             </Button>
           </div>
 
@@ -184,6 +202,56 @@ export default function BulkRegionAssignPage() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm region changes</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="mb-2">
+                  This will update {pendingChangeCount} record{pendingChangeCount === 1 ? "" : "s"}:
+                </p>
+                <div className="max-h-64 overflow-y-auto rounded-md border divide-y">
+                  {changedPharmacies.map((pharmacy) => (
+                    <div key={`p-${pharmacy.id}`} className="px-3 py-2 text-sm">
+                      <span className="font-medium text-foreground">{pharmacy.name}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {regionLabel(pharmacy.region || "none")} → {regionLabel(pharmacyRegions[pharmacy.id] || "none")}
+                      </span>
+                    </div>
+                  ))}
+                  {changedDrivers.map((driver) => (
+                    <div key={`d-${driver.id}`} className="px-3 py-2 text-sm">
+                      <span className="font-medium text-foreground">
+                        {driver.first_name} {driver.last_name}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {regionLabel(getDriverDetails(driver)?.region || "none")} →{" "}
+                        {regionLabel(driverRegions[driver.id] || "none")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleSaveAll()
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : `Save ${pendingChangeCount} Change${pendingChangeCount === 1 ? "" : "s"}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

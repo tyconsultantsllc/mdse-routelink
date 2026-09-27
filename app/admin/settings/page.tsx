@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import type React from "react"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { Card } from "@/components/ui/card"
@@ -11,11 +12,23 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { getDriverDetails } from "@/lib/region-utils"
-import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin } from "lucide-react"
+import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin, Download } from "lucide-react"
+
+const regionLabel = (v: string) => (v === "socal" ? "Southern California" : v === "minnesota" ? "Minnesota" : "No region")
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -23,8 +36,26 @@ export default function SettingsPage() {
   const [changeEmailOpen, setChangeEmailOpen] = useState(false)
   const [bulkPharmacies, setBulkPharmacies] = useState<any[]>([])
   const [bulkDrivers, setBulkDrivers] = useState<any[]>([])
+  // Snapshot of each pharmacy's/driver's region as loaded from the database,
+  // so "Save All Regions" can tell what actually changed and preview it
+  // before writing, instead of silently overwriting every row.
+  const [originalPharmacyRegions, setOriginalPharmacyRegions] = useState<Record<string, string>>({})
+  const [originalDriverRegions, setOriginalDriverRegions] = useState<Record<string, string>>({})
+  const [regionsConfirmOpen, setRegionsConfirmOpen] = useState(false)
   const [regionsLoading, setRegionsLoading] = useState(true)
   const [isSavingRegions, setIsSavingRegions] = useState(false)
+
+  // Avatar / photo upload
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  // Update Password
+  const [passwordForm, setPasswordForm] = useState({ current: "", new: "", confirm: "" })
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
+
+  // Export All Data
+  const [isExporting, setIsExporting] = useState(false)
 
   // Profile settings
   const [profileData, setProfileData] = useState({
@@ -47,7 +78,7 @@ export default function SettingsPage() {
 
       const { data } = await supabase
         .from("users")
-        .select("first_name, last_name, email, phone")
+        .select("first_name, last_name, email, phone, avatar_url")
         .eq("id", user.id)
         .single()
 
@@ -58,6 +89,7 @@ export default function SettingsPage() {
           phone: data.phone || "",
           role: "Admin",
         })
+        setAvatarUrl(data.avatar_url || null)
       }
     }
     loadProfile()
@@ -112,16 +144,18 @@ export default function SettingsPage() {
       try {
         const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
         const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
-        setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
-        setBulkDrivers(
-          users
-            .filter((u: any) => u.role === "driver")
-            .map((u: any) => ({
-              id: u.id,
-              name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
-              region: getDriverDetails(u)?.region || "",
-            })),
-        )
+        const mappedPharmacies = pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" }))
+        const mappedDrivers = users
+          .filter((u: any) => u.role === "driver")
+          .map((u: any) => ({
+            id: u.id,
+            name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+            region: getDriverDetails(u)?.region || "",
+          }))
+        setBulkPharmacies(mappedPharmacies)
+        setBulkDrivers(mappedDrivers)
+        setOriginalPharmacyRegions(Object.fromEntries(mappedPharmacies.map((p) => [p.id, p.region])))
+        setOriginalDriverRegions(Object.fromEntries(mappedDrivers.map((d) => [d.id, d.region])))
       } catch (error) {
         console.error("Error loading region data:", error)
       } finally {
@@ -130,6 +164,13 @@ export default function SettingsPage() {
     }
     loadRegionData()
   }, [])
+
+  // Only pharmacies/drivers whose region actually changed since it was
+  // loaded - used both to size/label the "Save All Regions" button and to
+  // build the confirmation preview before anything is written.
+  const changedBulkPharmacies = bulkPharmacies.filter((p) => (originalPharmacyRegions[p.id] ?? "") !== p.region)
+  const changedBulkDrivers = bulkDrivers.filter((d) => (originalDriverRegions[d.id] ?? "") !== d.region)
+  const pendingRegionChangeCount = changedBulkPharmacies.length + changedBulkDrivers.length
 
   const handleSaveAllRegions = async () => {
     setIsSavingRegions(true)
@@ -173,18 +214,144 @@ export default function SettingsPage() {
       const { getPharmacies, getUsers } = await import("@/app/actions/data-actions")
       const [pharmacies, users] = await Promise.all([getPharmacies(), getUsers()])
       const driverUsers = users.filter((u: any) => u.role === "driver")
-      setBulkPharmacies(pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" })))
-      setBulkDrivers(
-        driverUsers.map((u: any) => ({
-            id: u.id,
-            name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
-            region: getDriverDetails(u)?.region || "",
-          })),
-      )
+      const mappedPharmacies = pharmacies.map((p: any) => ({ id: p.id, name: p.name, region: p.region || "" }))
+      const mappedDrivers = driverUsers.map((u: any) => ({
+        id: u.id,
+        name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+        region: getDriverDetails(u)?.region || "",
+      }))
+      setBulkPharmacies(mappedPharmacies)
+      setBulkDrivers(mappedDrivers)
+      setOriginalPharmacyRegions(Object.fromEntries(mappedPharmacies.map((p) => [p.id, p.region])))
+      setOriginalDriverRegions(Object.fromEntries(mappedDrivers.map((d) => [d.id, d.region])))
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save regions", variant: "destructive" })
     } finally {
       setIsSavingRegions(false)
+      setRegionsConfirmOpen(false)
+    }
+  }
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file || !adminUserId) return
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Error", description: "Please choose an image file", variant: "destructive" })
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image must be 2MB or smaller", variant: "destructive" })
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    try {
+      const supabase = createClient()
+      const ext = file.name.split(".").pop() || "jpg"
+      const path = `${adminUserId}/photo-${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true })
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path)
+      const { updateUser } = await import("@/app/actions/data-actions")
+      await updateUser(adminUserId, { avatarUrl: data.publicUrl })
+
+      setAvatarUrl(data.publicUrl)
+      toast({ title: "Photo updated", description: "Your profile photo has been changed." })
+    } catch (error: any) {
+      const bucketMissing = /bucket.*not.*found/i.test(error?.message || "")
+      toast({
+        title: "Error",
+        description: bucketMissing
+          ? "Photo storage isn't set up yet - run scripts/029_user_avatars.sql in Supabase, then try again."
+          : error?.message || "Failed to upload photo",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
+
+  const handleUpdatePassword = async () => {
+    if (!passwordForm.current) {
+      toast({ title: "Error", description: "Enter your current password", variant: "destructive" })
+      return
+    }
+    if (passwordForm.new.length < 6) {
+      toast({ title: "Error", description: "New password must be at least 6 characters", variant: "destructive" })
+      return
+    }
+    if (passwordForm.new !== passwordForm.confirm) {
+      toast({ title: "Error", description: "New passwords do not match", variant: "destructive" })
+      return
+    }
+
+    setIsSavingPassword(true)
+    try {
+      const supabase = createClient()
+      // supabase.auth.updateUser() doesn't check the caller's existing
+      // password on its own - without re-verifying it here first, "Current
+      // Password" would just be a decorative field, the same class of bug as
+      // the dead button this replaces.
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: profileData.email,
+        password: passwordForm.current,
+      })
+      if (verifyError) {
+        toast({ title: "Error", description: "Current password is incorrect", variant: "destructive" })
+        return
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({ password: passwordForm.new })
+      if (updateError) throw updateError
+
+      toast({ title: "Password updated", description: "Your password has been changed successfully" })
+      setPasswordForm({ current: "", new: "", confirm: "" })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update password", variant: "destructive" })
+    } finally {
+      setIsSavingPassword(false)
+    }
+  }
+
+  const handleExportData = async () => {
+    setIsExporting(true)
+    try {
+      const { getPharmacies, getUsers, getRoutes, getDeliveryLogs } = await import("@/app/actions/data-actions")
+      const [pharmacies, users, routes, deliveryLogs] = await Promise.all([
+        getPharmacies(),
+        getUsers(),
+        getRoutes(),
+        // getDeliveryLogs() defaults to the most recent 500 rows (right for
+        // dashboards) - this is meant to be a full backup, so ask for
+        // everything instead of silently truncating it.
+        getDeliveryLogs(1_000_000),
+      ])
+
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        pharmacies,
+        users,
+        routes,
+        deliveryLogs,
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `routelink-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+
+      toast({ title: "Export ready", description: "Your data export has downloaded." })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to export data", variant: "destructive" })
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -296,13 +463,24 @@ export default function SettingsPage() {
                     <h3 className="text-lg font-semibold mb-4">Profile Information</h3>
                     <div className="flex items-center gap-6 mb-6">
                       <Avatar className="h-24 w-24">
-                        <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
+                        <AvatarImage src={avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=admin"} />
                         <AvatarFallback>AD</AvatarFallback>
                       </Avatar>
                       <div>
-                        <Button variant="outline">
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleAvatarFileChange}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                        >
                           <Upload className="h-4 w-4 mr-2" />
-                          Change Photo
+                          {isUploadingAvatar ? "Uploading..." : "Change Photo"}
                         </Button>
                         <p className="text-sm text-muted-foreground mt-2">JPG, GIF or PNG. Max size of 2MB</p>
                       </div>
@@ -356,20 +534,35 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="currentPassword">Current Password</Label>
-                    <Input id="currentPassword" type="password" />
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={passwordForm.current}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="newPassword">New Password</Label>
-                    <Input id="newPassword" type="password" />
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={passwordForm.new}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                    <Input id="confirmPassword" type="password" />
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={passwordForm.confirm}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                    />
                   </div>
                   <div className="flex justify-end">
-                    <Button>
+                    <Button onClick={handleUpdatePassword} disabled={isSavingPassword}>
                       <Shield className="h-4 w-4 mr-2" />
-                      Update Password
+                      {isSavingPassword ? "Updating..." : "Update Password"}
                     </Button>
                   </div>
                 </div>
@@ -685,21 +878,22 @@ export default function SettingsPage() {
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4 text-red-600">Danger Zone</h3>
                 <div className="space-y-4">
-                  <div className="p-4 border border-red-200 rounded-lg bg-red-50">
-                    <h4 className="font-medium mb-2">Clear System Cache</h4>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Clear all cached data. This may temporarily slow down the system.
-                    </p>
-                    <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-100 bg-transparent">
-                      Clear Cache
-                    </Button>
-                  </div>
-
+                  {/* "Clear System Cache" used to live here as a button with no
+                      onClick and, worse, nothing behind it to clear - there's no
+                      cache layer anywhere in this app (app_settings reads go
+                      straight to Supabase every time). Removed rather than build
+                      a fake control for a cache that doesn't exist. */}
                   <div className="p-4 border border-red-200 rounded-lg bg-red-50">
                     <h4 className="font-medium mb-2">Export All Data</h4>
                     <p className="text-sm text-muted-foreground mb-3">Download a complete backup of all system data.</p>
-                    <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-100 bg-transparent">
-                      Export Data
+                    <Button
+                      variant="outline"
+                      className="border-red-300 text-red-600 hover:bg-red-100 bg-transparent"
+                      onClick={handleExportData}
+                      disabled={isExporting}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {isExporting ? "Exporting..." : "Export Data"}
                     </Button>
                   </div>
                 </div>
@@ -715,8 +909,15 @@ export default function SettingsPage() {
                       Assign a region to every pharmacy and driver at once, instead of editing them one at a time.
                     </p>
                   </div>
-                  <Button onClick={handleSaveAllRegions} disabled={isSavingRegions || regionsLoading}>
-                    {isSavingRegions ? "Saving..." : "Save All Regions"}
+                  <Button
+                    onClick={() => setRegionsConfirmOpen(true)}
+                    disabled={isSavingRegions || regionsLoading || pendingRegionChangeCount === 0}
+                  >
+                    {isSavingRegions
+                      ? "Saving..."
+                      : pendingRegionChangeCount > 0
+                        ? `Save All Regions (${pendingRegionChangeCount})`
+                        : "Save All Regions"}
                   </Button>
                 </div>
 
@@ -791,6 +992,55 @@ export default function SettingsPage() {
         </div>
       </div>
       <ChangeEmailDialog open={changeEmailOpen} onOpenChange={setChangeEmailOpen} currentEmail={profileData.email} />
+
+      <AlertDialog open={regionsConfirmOpen} onOpenChange={setRegionsConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm region changes</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="mb-2">
+                  This will update {pendingRegionChangeCount} record{pendingRegionChangeCount === 1 ? "" : "s"}:
+                </p>
+                <div className="max-h-64 overflow-y-auto rounded-md border divide-y">
+                  {changedBulkPharmacies.map((pharmacy) => (
+                    <div key={`p-${pharmacy.id}`} className="px-3 py-2 text-sm">
+                      <span className="font-medium text-foreground">{pharmacy.name}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {regionLabel(originalPharmacyRegions[pharmacy.id] ?? "")} → {regionLabel(pharmacy.region)}
+                      </span>
+                    </div>
+                  ))}
+                  {changedBulkDrivers.map((driver) => (
+                    <div key={`d-${driver.id}`} className="px-3 py-2 text-sm">
+                      <span className="font-medium text-foreground">{driver.name}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {regionLabel(originalDriverRegions[driver.id] ?? "")} → {regionLabel(driver.region)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingRegions}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleSaveAllRegions()
+              }}
+              disabled={isSavingRegions}
+            >
+              {isSavingRegions
+                ? "Saving..."
+                : `Save ${pendingRegionChangeCount} Change${pendingRegionChangeCount === 1 ? "" : "s"}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

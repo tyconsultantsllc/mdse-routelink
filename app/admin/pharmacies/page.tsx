@@ -9,6 +9,7 @@ import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { AddPharmacyModal } from "@/components/add-pharmacy-modal"
 import { EditPharmacyModal } from "@/components/edit-pharmacy-modal"
+import { PharmacyManageUsersModal } from "@/components/pharmacy-manage-users-modal"
 import { useToast } from "@/hooks/use-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { RegionBadge } from "@/components/region-badge"
@@ -17,6 +18,7 @@ import { RegionFilter } from "@/components/region-filter"
 export default function PharmacyManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPharmacy, setEditingPharmacy] = useState<any>(null)
+  const [managingUsersPharmacy, setManagingUsersPharmacy] = useState<{ id: string; name: string } | null>(null)
   const { toast } = useToast()
   const [pharmacies, setPharmacies] = useState<any[]>([])
   const [selectedRegion, setSelectedRegion] = useState("all")
@@ -80,10 +82,7 @@ export default function PharmacyManagement() {
   }
 
   const handleManageUsers = (pharmacyId: string, pharmacyName: string) => {
-    toast({
-      title: "Manage Users",
-      description: `Opening user management for ${pharmacyName}`,
-    })
+    setManagingUsersPharmacy({ id: pharmacyId, name: pharmacyName })
   }
 
   const handlePharmacyAdded = () => {
@@ -228,6 +227,12 @@ export default function PharmacyManagement() {
           onOpenChange={(open) => !open && setEditingPharmacy(null)}
           pharmacy={editingPharmacy}
           onSuccess={fetchPharmacies}
+        />
+        <PharmacyManageUsersModal
+          open={!!managingUsersPharmacy}
+          onOpenChange={(open) => !open && setManagingUsersPharmacy(null)}
+          pharmacyId={managingUsersPharmacy?.id ?? null}
+          pharmacyName={managingUsersPharmacy?.name ?? ""}
         />
       </div>
     </TooltipProvider>
