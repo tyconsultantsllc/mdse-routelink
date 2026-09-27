@@ -24,6 +24,7 @@ interface RouteStop {
 interface RouteMapProps {
   highlightedRouteId?: string | null
   onHighlightMissing?: () => void
+  onDrawSummary?: (summary: { routesDrawn: number; totalRoutes: number }) => void
   routes?: Array<{
     id: string
     name: string
@@ -39,7 +40,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "#6b7280",
 }
 
-export default function RouteMap({ highlightedRouteId, onHighlightMissing, routes = [] }: RouteMapProps) {
+export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDrawSummary, routes = [] }: RouteMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const routeLayersRef = useRef<Map<string, L.Polyline>>(new Map())
@@ -77,6 +78,7 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
       routeLayersRef.current.clear()
 
       const allPoints: [number, number][] = []
+      let routesDrawn = 0
 
       // A labeled loop (rather than early `return`s from inside the nested
       // stop loop) so every exit path still falls through to the
@@ -169,13 +171,17 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, route
         })
 
         allPoints.push(...points)
+        routesDrawn++
       }
 
       if (!cancelled && allPoints.length > 0) {
         mapRef.current?.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50] })
       }
 
-      if (!cancelled) setIsGeocoding(false)
+      if (!cancelled) {
+        setIsGeocoding(false)
+        onDrawSummary?.({ routesDrawn, totalRoutes: routes.length })
+      }
     }
 
     drawRoutes()

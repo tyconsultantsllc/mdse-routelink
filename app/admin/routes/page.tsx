@@ -49,6 +49,7 @@ export default function RouteManagement() {
   const [priorityOnly, setPriorityOnly] = useState(false)
   const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [mapDrawSummary, setMapDrawSummary] = useState<{ routesDrawn: number; totalRoutes: number } | null>(null)
 
   useEffect(() => {
     fetchRoutes()
@@ -222,6 +223,25 @@ export default function RouteManagement() {
     [routes],
   )
 
+  // "View on Map" is available from the full route list, including
+  // completed/cancelled routes that activeRoutesForMap deliberately leaves
+  // out - without this, clicking it on any of those routes would silently
+  // do nothing, since RouteMap only ever knows about the routes it was
+  // actually given. This adds the specifically-requested route back in on
+  // demand (it's cleared again once the 3-second highlight in
+  // handleViewOnMap resets highlightedRouteId), without changing what the
+  // map shows the rest of the time.
+  const highlightedExtraRoute = useMemo(() => {
+    if (!highlightedRouteId) return null
+    if (activeRoutesForMap.some((r) => r.id === highlightedRouteId)) return null
+    return routes.find((r) => r.id === highlightedRouteId) || null
+  }, [highlightedRouteId, activeRoutesForMap, routes])
+
+  const routesForMap = useMemo(
+    () => (highlightedExtraRoute ? [...activeRoutesForMap, highlightedExtraRoute] : activeRoutesForMap),
+    [activeRoutesForMap, highlightedExtraRoute],
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -265,16 +285,29 @@ export default function RouteManagement() {
               <div className="mb-3">
                 <h3 className="text-sm font-semibold text-foreground">Active Routes Map</h3>
                 <p className="text-xs text-muted-foreground">
-                  Shows every pending or in-progress route's delivery path. Completed and cancelled routes aren't plotted here.
+                  Shows every pending or in-progress route's delivery path. Completed and cancelled routes aren't plotted here by
+                  default, but "View on Map" will still pull one up on request.
                 </p>
+                {activeRoutesForMap.length === 0 && !highlightedExtraRoute && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    No active routes right now - this fills in once a route is pending or in progress.
+                  </p>
+                )}
+                {mapDrawSummary && mapDrawSummary.totalRoutes > 0 && mapDrawSummary.routesDrawn < mapDrawSummary.totalRoutes && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    {mapDrawSummary.totalRoutes - mapDrawSummary.routesDrawn} of {mapDrawSummary.totalRoutes} route(s) couldn't be
+                    shown - their stops may be missing a real, locatable address.
+                  </p>
+                )}
               </div>
               <RouteMap
                 highlightedRouteId={highlightedRouteId}
-                routes={activeRoutesForMap}
+                routes={routesForMap}
+                onDrawSummary={setMapDrawSummary}
                 onHighlightMissing={() =>
                   toast({
                     title: "Couldn't show this route on the map",
-                    description: `${highlightedRouteName || "This route"} may not have valid stop addresses yet, may already be completed or cancelled, or the map is still locating stops for other routes - try again in a moment.`,
+                    description: `${highlightedRouteName || "This route"} may not have valid stop addresses yet, or the map is still locating stops - try again in a moment.`,
                     variant: "destructive",
                   })
                 }
