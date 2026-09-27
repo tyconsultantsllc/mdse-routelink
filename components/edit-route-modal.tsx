@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
+import { TimeSelect } from "@/components/time-select"
 
 interface EditRouteModalProps {
   open: boolean
@@ -417,13 +418,7 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
 
             <div>
               <Label htmlFor="startTime">Start Time</Label>
-              <Input
-                id="startTime"
-                type="time"
-                step={900}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
+              <TimeSelect id="startTime" value={startTime} onChange={setStartTime} className="w-full" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -624,14 +619,12 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
                         <Label htmlFor={`designated-time-${index}`} className="text-xs text-amber-700 whitespace-nowrap">
                           Designated delivery time:
                         </Label>
-                        <Input
+                        <TimeSelect
                           id={`designated-time-${index}`}
-                          type="time"
-                          step={900}
-                          value={stop.designatedTime || ""}
-                          onChange={(e) => updateStop(index, "designatedTime", e.target.value)}
+                          value={stop.designatedTime}
+                          onChange={(value) => updateStop(index, "designatedTime", value)}
                           disabled={isResolved}
-                          className="w-36 h-8"
+                          className="w-40 h-8"
                         />
                       </div>
                     )}

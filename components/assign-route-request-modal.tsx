@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TimeSelect } from "@/components/time-select"
 import { useToast } from "@/hooks/use-toast"
 import { getDriverDetails } from "@/lib/region-utils"
 import {
@@ -153,13 +154,7 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
 
           <div>
             <Label htmlFor="startTime">Start Time</Label>
-            <Input
-              id="startTime"
-              type="time"
-              step={900}
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
+            <TimeSelect id="startTime" value={startTime} onChange={setStartTime} className="w-full" />
           </div>
 
           <div>

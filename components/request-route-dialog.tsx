@@ -5,9 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TimeSelect } from "@/components/time-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertTriangle, MapPin, Star, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -349,13 +349,11 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
                           <Label htmlFor={`requested-time-${index}`} className="text-xs text-amber-700 whitespace-nowrap">
                             Requested time:
                           </Label>
-                          <input
+                          <TimeSelect
                             id={`requested-time-${index}`}
-                            type="time"
-                            step={900}
-                            value={stop.requestedTime || ""}
-                            onChange={(e) => handleSetStopTime(index, e.target.value)}
-                            className="h-7 rounded border border-amber-300 bg-background px-1.5 text-xs"
+                            value={stop.requestedTime}
+                            onChange={(value) => handleSetStopTime(index, value)}
+                            className="h-7 w-32 border-amber-300 text-xs"
                           />
                         </div>
                       )}
@@ -414,13 +412,7 @@ export function RequestRouteDialog({ open, onOpenChange, onSubmitted }: RequestR
           {driverId && (
             <div>
               <Label htmlFor="requestStartTime">Start Time</Label>
-              <Input
-                id="requestStartTime"
-                type="time"
-                step={900}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
+              <TimeSelect id="requestStartTime" value={startTime} onChange={setStartTime} className="w-full" />
             </div>
           )}
         </div>

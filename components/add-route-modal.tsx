@@ -25,6 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
+import { TimeSelect } from "@/components/time-select"
 import { geocodeAddress } from "@/lib/geocode"
 import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
@@ -602,13 +603,7 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
 
           <div>
             <Label htmlFor="startTime">Start Time</Label>
-            <Input
-              id="startTime"
-              type="time"
-              step={900}
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
+            <TimeSelect id="startTime" value={startTime} onChange={setStartTime} className="w-full" />
           </div>
 
           <div className="border rounded-lg p-4 space-y-3">
@@ -846,13 +841,11 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
                       <Label htmlFor={`designated-time-${index}`} className="text-xs text-amber-700 whitespace-nowrap">
                         Designated delivery time:
                       </Label>
-                      <Input
+                      <TimeSelect
                         id={`designated-time-${index}`}
-                        type="time"
-                        step={900}
-                        value={stop.designatedTime || ""}
-                        onChange={(e) => updateStop(index, "designatedTime", e.target.value)}
-                        className="w-36 h-8"
+                        value={stop.designatedTime}
+                        onChange={(value) => updateStop(index, "designatedTime", value)}
+                        className="w-40 h-8"
                       />
                     </div>
                   )}
