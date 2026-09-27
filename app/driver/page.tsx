@@ -536,6 +536,18 @@ export default function DriverTrackingPage() {
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
   }
 
+  // A priority stop is "overdue" once its designated clock time, on the
+  // route's actual scheduled day, has passed and the stop hasn't been
+  // resolved yet - not just flagged priority, but actually missed.
+  const isStopOverdue = (rawStartTime: string | null, designatedTime: string | null | undefined, status: RouteStop["status"]) => {
+    if (!designatedTime || !rawStartTime) return false
+    if (status === "completed" || status === "failed" || status === "returned") return false
+    const routeDate = new Date(rawStartTime)
+    const [h, m] = designatedTime.split(":").map((n) => parseInt(n, 10))
+    const deadline = new Date(routeDate.getFullYear(), routeDate.getMonth(), routeDate.getDate(), h, m, 0, 0)
+    return new Date() > deadline
+  }
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "urgent":
@@ -779,11 +791,16 @@ export default function DriverTrackingPage() {
                                 <div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <p className="text-sm text-muted-foreground">Next Stop</p>
-                                    {nextStop.isPriority && (
-                                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
-                                        ⭐ Priority
-                                      </Badge>
-                                    )}
+                                    {nextStop.isPriority &&
+                                      (isStopOverdue(activeRoute?.rawStartTime ?? null, nextStop.designatedTime, nextStop.status) ? (
+                                        <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
+                                          ⚠ Overdue
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                                          ⭐ Priority
+                                        </Badge>
+                                      ))}
                                   </div>
                                   <p className="font-medium">{nextStop.pharmacyName}</p>
                                   <p className="text-xs text-muted-foreground mt-1">Pickup: {nextStop.pickupAddress}</p>
@@ -791,8 +808,16 @@ export default function DriverTrackingPage() {
                                     Dropoff: <AddressWithUnit address={nextStop.dropoffAddress} size="sm" />
                                   </p>
                                   {nextStop.isPriority && nextStop.designatedTime && (
-                                    <p className="text-xs font-medium text-amber-700 mt-1">
-                                      Requested for {formatDesignatedTime(nextStop.designatedTime)}
+                                    <p
+                                      className={`text-xs font-medium mt-1 ${
+                                        isStopOverdue(activeRoute?.rawStartTime ?? null, nextStop.designatedTime, nextStop.status)
+                                          ? "text-red-700"
+                                          : "text-amber-700"
+                                      }`}
+                                    >
+                                      {isStopOverdue(activeRoute?.rawStartTime ?? null, nextStop.designatedTime, nextStop.status)
+                                        ? `Was due ${formatDesignatedTime(nextStop.designatedTime)}`
+                                        : `Requested for ${formatDesignatedTime(nextStop.designatedTime)}`}
                                     </p>
                                   )}
                                 </div>
@@ -876,15 +901,19 @@ export default function DriverTrackingPage() {
                         </div>
 
                         <div className="space-y-3">
-                          {route.stops.map((stop, index) => (
+                          {route.stops.map((stop, index) => {
+                            const overdue = stop.isPriority && isStopOverdue(route.rawStartTime, stop.designatedTime, stop.status)
+                            return (
                             <div
                               key={stop.id}
                               className={`p-3 rounded-md border ${
-                                stop.isPriority
-                                  ? "bg-amber-50 border-amber-300"
-                                  : stop.status === "in-progress"
-                                    ? "bg-blue-50 border-blue-200"
-                                    : "bg-muted"
+                                overdue
+                                  ? "bg-red-50 border-red-300"
+                                  : stop.isPriority
+                                    ? "bg-amber-50 border-amber-300"
+                                    : stop.status === "in-progress"
+                                      ? "bg-blue-50 border-blue-200"
+                                      : "bg-muted"
                               }`}
                             >
                               <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -895,8 +924,9 @@ export default function DriverTrackingPage() {
                                     </Badge>
                                     <span className="font-medium text-xs md:text-sm">{stop.pharmacyName}</span>
                                     {stop.isPriority && (
-                                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
-                                        ⭐ Priority{stop.designatedTime ? ` • ${formatDesignatedTime(stop.designatedTime)}` : ""}
+                                      <Badge className={overdue ? "bg-red-100 text-red-800 hover:bg-red-100 text-xs" : "bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs"}>
+                                        {overdue ? "⚠ Overdue" : "⭐ Priority"}
+                                        {stop.designatedTime ? ` • ${formatDesignatedTime(stop.designatedTime)}` : ""}
                                       </Badge>
                                     )}
                                     <Badge
@@ -1037,7 +1067,7 @@ export default function DriverTrackingPage() {
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          )})}
                         </div>
                       </div>
                     )

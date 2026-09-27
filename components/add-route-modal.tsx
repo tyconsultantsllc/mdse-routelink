@@ -173,7 +173,35 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       return
     }
 
+    const timingWarning = checkPriorityTimingFeasibility()
+    if (timingWarning) {
+      toast({ title: "Heads up on timing", description: timingWarning })
+    }
+
     await submitRoute(false)
+  }
+
+  // Soft heads-up only, not a hard rule - flags a priority stop whose
+  // designated time looks earlier than the route could realistically reach
+  // it, using the same 30-min-per-stop heuristic used everywhere else in
+  // this app for an estimate before a real duration exists. Doesn't block
+  // submission since it's just an estimate and the admin may know better
+  // (a shorter real distance, a route that starts earlier than shown, etc).
+  const checkPriorityTimingFeasibility = (): string | null => {
+    if (!startTime) return null
+    const [sh, sm] = startTime.split(':').map((n) => parseInt(n, 10))
+    const problems: string[] = []
+    stops.forEach((stop, index) => {
+      if (!stop.isPriority || !stop.designatedTime) return
+      const etaMinutes = sh * 60 + sm + index * 30
+      const [dh, dm] = stop.designatedTime.split(':').map((n) => parseInt(n, 10))
+      const designatedMinutes = dh * 60 + dm
+      if (designatedMinutes < etaMinutes) {
+        problems.push(`Stop ${index + 1} (${stop.pharmacyName || stop.dropoffAddress})`)
+      }
+    })
+    if (problems.length === 0) return null
+    return `Based on stop order and a 30-min/stop estimate, the route may not reach ${problems.join(', ')} by its requested time. Consider moving it earlier or optimizing the route.`
   }
 
   const submitRoute = async (confirmDespiteConflicts: boolean) => {
@@ -290,7 +318,14 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
           name: stop.pharmacyName,
           latitude: coords.lat,
           longitude: coords.lng,
-          priority: priority as "urgent" | "high" | "medium" | "low",
+          // A stop flagged priority gets pulled to the front of the
+          // optimizer's nearest-neighbor search regardless of the route's
+          // own priority level - otherwise "Optimize" could easily bump a
+          // priority stop to the very end for the sake of travel distance,
+          // defeating the point of flagging it.
+          priority: (stop.isPriority ? "urgent" : priority) as "urgent" | "high" | "medium" | "low",
+          isPriorityStop: stop.isPriority || false,
+          designatedTime: stop.designatedTime || undefined,
           pickupAddress: stop.pickupAddress,
           dropoffAddress: stop.dropoffAddress,
         }

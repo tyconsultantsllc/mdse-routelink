@@ -38,6 +38,8 @@ export interface RouteStop {
     dropoff: { lat: number; lng: number }
   }
   trackingCode?: string
+  isPriority?: boolean
+  designatedTime?: string | null
 }
 
 export interface Route {
@@ -55,6 +57,7 @@ export interface Route {
   totalDistance: number // miles
   createdAt: string
   completedAt?: string
+  startTimeRaw?: string | null
 }
 
 export interface Notification {

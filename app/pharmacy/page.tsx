@@ -122,6 +122,11 @@ export default function PharmacyDashboard() {
                   minute: "2-digit",
                 })
               : "N/A",
+            // Raw start_time (not just the formatted display string) so a
+            // priority stop's designated_time - which is a bare clock time,
+            // no date of its own - can be checked against the actual
+            // scheduled day to tell whether it's now overdue.
+            startTimeRaw: stop.routes?.start_time || null,
             estimatedDuration: stop.estimated_time || 30,
             priority: stop.routes?.priority || "medium",
             status: stop.routes?.status || "pending",
@@ -158,6 +163,8 @@ export default function PharmacyDashboard() {
           },
           dropoffAddressRaw: stop.dropoff_address,
           trackingCode: stop.tracking_code,
+          isPriority: !!stop.is_priority,
+          designatedTime: stop.designated_time || null,
         })
       })
 
@@ -226,6 +233,29 @@ export default function PharmacyDashboard() {
     const today = new Date()
     return completedDate.toDateString() === today.toDateString()
   }).length
+
+  // designated_time comes back from Postgres as "HH:MM:SS" - render it as a
+  // friendly clock time.
+  const formatDesignatedTime = (time: string) => {
+    const d = new Date(`1970-01-01T${time}`)
+    return isNaN(d.getTime()) ? time : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  }
+
+  // A priority stop is "overdue" once its designated clock time, on the
+  // route's actual scheduled day, has passed and the stop still hasn't been
+  // delivered/failed/returned - not just "flagged priority" anymore, but
+  // actually missed.
+  const isStopOverdue = (startTimeRaw: string | null | undefined, designatedTime: string | null | undefined, status: string) => {
+    if (!designatedTime || !startTimeRaw) return false
+    // route_stops.status uses the DB's own values here (delivered/failed/returned),
+    // not the driver app's remapped "completed" - a stop in any of those end
+    // states is resolved and can't still be "overdue".
+    if (status === "delivered" || status === "failed" || status === "returned") return false
+    const routeDate = new Date(startTimeRaw)
+    const [h, m] = designatedTime.split(":").map((n) => parseInt(n, 10))
+    const deadline = new Date(routeDate.getFullYear(), routeDate.getMonth(), routeDate.getDate(), h, m, 0, 0)
+    return new Date() > deadline
+  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -401,6 +431,16 @@ export default function PharmacyDashboard() {
                           <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
                           {getStatusBadge(delivery.status)}
                           {getConfirmationBadge(delivery.driverConfirmation || "pending")}
+                          {delivery.stops[0]?.isPriority &&
+                            (isStopOverdue(delivery.startTimeRaw, delivery.stops[0].designatedTime, delivery.stops[0].status) ? (
+                              <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
+                                ⚠ Overdue{delivery.stops[0].designatedTime ? ` • was due ${formatDesignatedTime(delivery.stops[0].designatedTime)}` : ""}
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                                ⭐ Priority{delivery.stops[0].designatedTime ? ` • ${formatDesignatedTime(delivery.stops[0].designatedTime)}` : ""}
+                              </Badge>
+                            ))}
                         </div>
                         <div className="text-xs md:text-sm text-muted-foreground space-y-1">
                           <p>Driver: {delivery.assignedDriverName}</p>

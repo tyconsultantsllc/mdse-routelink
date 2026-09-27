@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Sparkles, Info } from "lucide-react"
+import { Sparkles, Info, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { optimizeStopsWithOrder } from "@/lib/route-optimizer"
@@ -72,6 +72,9 @@ export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: Rou
                 <li>Distance between stops (shortest path)</li>
                 <li>Priority level (urgent stops first)</li>
                 <li>Estimated delivery times</li>
+                {stops.some((s) => s.isPriorityStop) && (
+                  <li className="text-amber-700">⭐ Stops you flagged as priority are weighted to come first</li>
+                )}
               </ul>
             </AlertDescription>
           </Alert>
@@ -83,7 +86,17 @@ export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: Rou
                 <div key={index} className="text-sm flex items-center gap-2">
                   <span className="font-mono text-muted-foreground">{index + 1}.</span>
                   <span>{stop.pharmacy?.name || stop.name || `Stop ${index + 1}`}</span>
-                  {stop.priority && (
+                  {stop.isPriorityStop && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 flex items-center gap-1">
+                      <Star className="h-3 w-3 fill-amber-500" />
+                      Priority
+                    </span>
+                  )}
+                  {/* When a stop is individually flagged priority, its "urgent" weight
+                      above is an internal optimizer detail (see prepareStopsForOptimization) -
+                      showing the route-level badge on top of it here would just be confusing,
+                      so it only appears for stops that aren't already carrying the star. */}
+                  {stop.priority && !stop.isPriorityStop && (
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
                         stop.priority === "urgent"

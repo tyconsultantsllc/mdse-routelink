@@ -164,12 +164,37 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
       return
     }
 
+    const timingWarning = checkPriorityTimingFeasibility()
+    if (timingWarning) {
+      toast({ title: "Heads up on timing", description: timingWarning })
+    }
+
     if (seriesId) {
       setShowScopePrompt(true)
       return
     }
 
     await performUpdate("this")
+  }
+
+  // Soft heads-up only, not a hard rule - see the same check in
+  // add-route-modal.tsx for the reasoning.
+  const checkPriorityTimingFeasibility = (): string | null => {
+    if (!startTime) return null
+    const [sh, sm] = startTime.split(':').map((n) => parseInt(n, 10))
+    const problems: string[] = []
+    stops.forEach((stop, index) => {
+      const isResolved = stop.status === 'delivered' || stop.status === 'failed' || stop.status === 'returned'
+      if (!stop.isPriority || !stop.designatedTime || isResolved) return
+      const etaMinutes = sh * 60 + sm + index * 30
+      const [dh, dm] = stop.designatedTime.split(':').map((n) => parseInt(n, 10))
+      const designatedMinutes = dh * 60 + dm
+      if (designatedMinutes < etaMinutes) {
+        problems.push(`Stop ${index + 1} (${stop.pharmacyName || stop.dropoffAddress})`)
+      }
+    })
+    if (problems.length === 0) return null
+    return `Based on stop order and a 30-min/stop estimate, the route may not reach ${problems.join(', ')} by its requested time. Consider moving it earlier or optimizing the route.`
   }
 
   const performUpdate = async (scope: "this" | "following") => {

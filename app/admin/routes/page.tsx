@@ -46,6 +46,7 @@ export default function RouteManagement() {
 
   const [routes, setRoutes] = useState<any[]>([])
   const [selectedRegion, setSelectedRegion] = useState("all")
+  const [priorityOnly, setPriorityOnly] = useState(false)
   const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -203,7 +204,9 @@ export default function RouteManagement() {
     setTimeout(() => setHighlightedRouteId(null), 3000)
   }
 
-  const filteredRoutes = selectedRegion === "all" ? routes : routes.filter((r) => r.region === selectedRegion)
+  const regionFilteredRoutes = selectedRegion === "all" ? routes : routes.filter((r) => r.region === selectedRegion)
+  const priorityRouteCount = regionFilteredRoutes.filter((r) => r.priorityStops > 0).length
+  const filteredRoutes = priorityOnly ? regionFilteredRoutes.filter((r) => r.priorityStops > 0) : regionFilteredRoutes
 
   return (
     <TooltipProvider>
@@ -225,6 +228,17 @@ export default function RouteManagement() {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {priorityRouteCount > 0 && (
+                  <Button
+                    type="button"
+                    variant={priorityOnly ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPriorityOnly((v) => !v)}
+                    className={priorityOnly ? "bg-amber-500 hover:bg-amber-600 text-white" : "text-amber-700 border-amber-300 hover:bg-amber-50"}
+                  >
+                    ⭐ {priorityRouteCount} with priority stops
+                  </Button>
+                )}
                 <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
                 <Button onClick={() => setIsModalOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
@@ -254,7 +268,11 @@ export default function RouteManagement() {
                 </Card>
               ) : filteredRoutes.length === 0 ? (
                 <Card className="p-8 text-center">
-                  <p className="text-muted-foreground">No routes found. Add your first route to get started.</p>
+                  <p className="text-muted-foreground">
+                    {priorityOnly
+                      ? "No routes with a priority stop right now."
+                      : "No routes found. Add your first route to get started."}
+                  </p>
                 </Card>
               ) : (
                 <table className="min-w-full divide-y divide-border">
