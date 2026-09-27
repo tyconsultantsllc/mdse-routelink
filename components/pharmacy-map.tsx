@@ -148,5 +148,10 @@ export default function PharmacyMap({ deliveries }: PharmacyMapProps) {
     }
   }, [deliveries])
 
-  return <div ref={containerRef} className="h-[400px] w-full rounded-lg" />
+  // Height set inline, not via Tailwind's h-[400px]: once Leaflet adds its
+  // own "leaflet-container" class to this element, leaflet.css's un-layered
+  // `height: 100%` rule beats any Tailwind (layered) height class regardless
+  // of source order, collapsing this to 0px with no sized ancestor to fill.
+  // Inline style always wins.
+  return <div ref={containerRef} className="w-full rounded-lg" style={{ height: 400 }} />
 }

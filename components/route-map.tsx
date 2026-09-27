@@ -245,7 +245,19 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
 
   return (
     <div className="relative">
-      <div ref={containerRef} className="h-[500px] w-full rounded-lg" />
+      {/* Height is set inline, not via a Tailwind class, on purpose: once
+          Leaflet initializes, it adds its own "leaflet-container" class to
+          this exact element, and leaflet.css sets `.leaflet-container {
+          height: 100% }` as a plain, un-layered rule. Tailwind's utility
+          classes are emitted inside a CSS `@layer`, and per the CSS Cascade
+          Layers spec, ANY un-layered rule beats a layered one regardless of
+          specificity or source order - so a Tailwind `h-[500px]` class here
+          always lost to Leaflet's `height: 100%`, and with no sized
+          ancestor to inherit a percentage from, that resolved to 0. The map
+          was never broken - it was rendering at 0 pixels tall, invisibly,
+          every time. An inline style always wins over any stylesheet rule
+          (layered or not), so it's the one thing that reliably fixes this. */}
+      <div ref={containerRef} className="w-full rounded-lg" style={{ height: 500 }} />
       {isGeocoding && (
         <div className="absolute top-2 right-2 bg-card border rounded-md px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
           Locating stops...

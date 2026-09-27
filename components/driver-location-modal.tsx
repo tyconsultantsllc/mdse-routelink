@@ -64,7 +64,12 @@ export function DriverLocationModal({
           </div>
         ) : (
           <>
-            <div ref={containerRef} className="h-80 w-full rounded-md" />
+            {/* Height set inline, not via Tailwind's h-80: once Leaflet adds
+                its own "leaflet-container" class to this element, leaflet.css's
+                un-layered `height: 100%` rule beats any Tailwind (layered)
+                height class regardless of source order, collapsing this to
+                0px with no sized ancestor to fill. Inline style always wins. */}
+            <div ref={containerRef} className="w-full rounded-md" style={{ height: 320 }} />
             {lastUpdate && (
               <p className="text-xs text-muted-foreground text-center">
                 Last updated {new Date(lastUpdate).toLocaleString()}
