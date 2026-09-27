@@ -81,35 +81,44 @@ export function RouteOptimizerDialog({ isOpen, onClose, stops, onOptimize }: Rou
 
           <div className="bg-muted p-4 rounded-lg space-y-2">
             <h4 className="font-semibold">Current Route:</h4>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {stops.map((stop, index) => (
-                <div key={index} className="text-sm flex items-center gap-2">
-                  <span className="font-mono text-muted-foreground">{index + 1}.</span>
-                  <span>{stop.pharmacy?.name || stop.name || `Stop ${index + 1}`}</span>
-                  {stop.isPriorityStop && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 flex items-center gap-1">
-                      <Star className="h-3 w-3 fill-amber-500" />
-                      Priority
-                    </span>
-                  )}
-                  {/* When a stop is individually flagged priority, its "urgent" weight
-                      above is an internal optimizer detail (see prepareStopsForOptimization) -
-                      showing the route-level badge on top of it here would just be confusing,
-                      so it only appears for stops that aren't already carrying the star. */}
-                  {stop.priority && !stop.isPriorityStop && (
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        stop.priority === "urgent"
-                          ? "bg-red-500 text-white"
-                          : stop.priority === "high"
-                            ? "bg-orange-500 text-white"
-                            : stop.priority === "medium"
-                              ? "bg-blue-500 text-white"
-                              : "bg-gray-500 text-white"
-                      }`}
-                    >
-                      {stop.priority}
-                    </span>
+                <div key={index} className="text-sm">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-muted-foreground">{index + 1}.</span>
+                    <span>{stop.pharmacy?.name || stop.name || `Stop ${index + 1}`}</span>
+                    {stop.isPriorityStop && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 flex items-center gap-1">
+                        <Star className="h-3 w-3 fill-amber-500" />
+                        Priority
+                      </span>
+                    )}
+                    {/* When a stop is individually flagged priority, its "urgent" weight
+                        above is an internal optimizer detail (see prepareStopsForOptimization) -
+                        showing the route-level badge on top of it here would just be confusing,
+                        so it only appears for stops that aren't already carrying the star. */}
+                    {stop.priority && !stop.isPriorityStop && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          stop.priority === "urgent"
+                            ? "bg-red-500 text-white"
+                            : stop.priority === "high"
+                              ? "bg-orange-500 text-white"
+                              : stop.priority === "medium"
+                                ? "bg-blue-500 text-white"
+                                : "bg-gray-500 text-white"
+                        }`}
+                      >
+                        {stop.priority}
+                      </span>
+                    )}
+                  </div>
+                  {/* Several stops can share the same pharmacy (one pickup
+                      location delivering to many different patient
+                      addresses), so the address is what actually tells them
+                      apart in this list - the pharmacy name alone can't. */}
+                  {stop.dropoffAddress && (
+                    <p className="text-xs text-muted-foreground pl-5">{stop.dropoffAddress}</p>
                   )}
                 </div>
               ))}

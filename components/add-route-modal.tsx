@@ -474,10 +474,21 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
   }
 
   const handleOptimizedStops = (optimizedStops: any[], estimatedDuration?: number) => {
+    // Same filter prepareStopsForOptimization used to build the list the
+    // optimizer actually saw - its "stop-<n>" ids below refer to positions
+    // in this filtered array, not the raw `stops` state.
+    const validStops = stops.filter((s) => s.pharmacyId && s.dropoffAddress)
+
     const reorderedStops = optimizedStops.map((opt) => {
-      // Find the original stop by pharmacy ID
-      const originalStop = stops.find((s) => s.pharmacyId === opt.pharmacy_id)
-      
+      // Match back by the id assigned in prepareStopsForOptimization
+      // ("stop-<index>"), not by pharmacy_id - a pharmacy can have several
+      // stops in the same route (e.g. delivering to multiple patient
+      // addresses), and matching by pharmacy_id alone meant .find() always
+      // resolved to the FIRST such stop, so every one of them came back
+      // with that same stop's dropoff address, priority flag, and time.
+      const match = typeof opt.id === "string" ? opt.id.match(/^stop-(\d+)$/) : null
+      const originalStop = match ? validStops[Number(match[1])] : undefined
+
       if (originalStop) {
         // Return the complete original stop with all its data intact
         return {
