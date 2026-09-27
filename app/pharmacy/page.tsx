@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
-import { Package, Clock, CheckCircle, TrendingUp, LogOut, AlertCircle, Route as RouteIcon, Settings as SettingsIcon } from 'lucide-react'
+import { Package, Clock, CheckCircle, XCircle, TrendingUp, LogOut, AlertCircle, Route as RouteIcon, Settings as SettingsIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -415,74 +415,106 @@ export default function PharmacyDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3 md:space-y-4">
-                {incomingDeliveries.length === 0 ? (
+                {loading ? (
+                  <p className="text-center text-muted-foreground py-8">Loading deliveries...</p>
+                ) : incomingDeliveries.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No incoming deliveries</p>
                 ) : (
-                  incomingDeliveries.map((delivery) => (
-                    <div
-                      key={delivery.id}
-                      className="flex flex-col md:flex-row md:items-start md:justify-between p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-3"
-                    >
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div
-                            className={`w-2 h-2 rounded-full ${getPriorityColor(delivery.priority)} flex-shrink-0`}
-                          />
-                          <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
-                          {getStatusBadge(delivery.status)}
-                          {getConfirmationBadge(delivery.driverConfirmation || "pending")}
-                          {delivery.stops[0]?.isPriority &&
-                            (isStopOverdue(delivery.startTimeRaw, delivery.stops[0].designatedTime, delivery.stops[0].status) ? (
-                              <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
-                                ⚠ Overdue{delivery.stops[0].designatedTime ? ` • was due ${formatDesignatedTime(delivery.stops[0].designatedTime)}` : ""}
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
-                                ⭐ Priority{delivery.stops[0].designatedTime ? ` • ${formatDesignatedTime(delivery.stops[0].designatedTime)}` : ""}
-                              </Badge>
-                            ))}
+                  incomingDeliveries.map((delivery) => {
+                    // Sort by stop_order so a multi-stop route at this pharmacy is
+                    // shown in actual visit order, not raw fetch order.
+                    const sortedStops = [...delivery.stops].sort((a, b) => a.sequence - b.sequence)
+                    const multiStop = sortedStops.length > 1
+                    return (
+                      <div
+                        key={delivery.id}
+                        className="p-3 md:p-4 border rounded-lg hover:bg-muted/50 transition-colors space-y-3"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div
+                                className={`w-2 h-2 rounded-full ${getPriorityColor(delivery.priority)} flex-shrink-0`}
+                              />
+                              <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
+                              {getStatusBadge(delivery.status)}
+                              {getConfirmationBadge(delivery.driverConfirmation || "pending")}
+                            </div>
+                            <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                              <p>Driver: {delivery.assignedDriverName}</p>
+                              <p className="break-words">Pickup: {sortedStops[0]?.pickupAddress}</p>
+                              <p>
+                                Estimated Time: {delivery.startTime} - {delivery.endTime}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="capitalize text-xs w-fit">
+                            {delivery.priority}
+                          </Badge>
                         </div>
-                        <div className="text-xs md:text-sm text-muted-foreground space-y-1">
-                          <p>Driver: {delivery.assignedDriverName}</p>
-                          <p className="break-words">Pickup: {delivery.stops[0].pickupAddress}</p>
-                          <p className="break-words">
-                            Dropoff: <AddressWithUnit address={delivery.stops[0].dropoffAddress} size="sm" />
-                          </p>
-                          <p>
-                            Estimated Time: {delivery.startTime} - {delivery.endTime}
-                          </p>
+
+                        {/* Every stop this route has at this pharmacy - previously only
+                            stops[0] was ever shown here, hiding the rest on multi-stop
+                            routes. */}
+                        <div className="space-y-2 border-l-2 border-muted pl-3">
+                          {sortedStops.map((stop, i) => (
+                            <div
+                              key={stop.id}
+                              className="flex flex-col md:flex-row md:items-start md:justify-between gap-2"
+                            >
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {multiStop && (
+                                    <span className="text-xs font-medium text-muted-foreground">
+                                      Stop {i + 1}
+                                    </span>
+                                  )}
+                                  {stop.isPriority &&
+                                    (isStopOverdue(delivery.startTimeRaw, stop.designatedTime, stop.status) ? (
+                                      <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
+                                        ⚠ Overdue{stop.designatedTime ? ` • was due ${formatDesignatedTime(stop.designatedTime)}` : ""}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                                        ⭐ Priority{stop.designatedTime ? ` • ${formatDesignatedTime(stop.designatedTime)}` : ""}
+                                      </Badge>
+                                    ))}
+                                </div>
+                                <p className="text-xs md:text-sm text-muted-foreground break-words">
+                                  Dropoff: <AddressWithUnit address={stop.dropoffAddress} size="sm" />
+                                </p>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0">
+                                {trackingEnabled && stop.trackingCode && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7 bg-transparent"
+                                    onClick={() => copyTrackingLink(stop.trackingCode!)}
+                                  >
+                                    Copy Tracking Link
+                                  </Button>
+                                )}
+                                {barcodeScanningEnabled && stop.id && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7 bg-transparent"
+                                    onClick={() => {
+                                      setPackItemsRouteStopId(stop.id)
+                                      setPackItemsDeliveryName(multiStop ? `${delivery.name} - Stop ${i + 1}` : delivery.name)
+                                    }}
+                                  >
+                                    Scan Packages
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div className="flex md:flex-col md:items-end justify-end gap-2">
-                        <Badge variant="outline" className="capitalize text-xs">
-                          {delivery.priority}
-                        </Badge>
-                        {trackingEnabled && delivery.stops[0]?.trackingCode && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7 bg-transparent"
-                            onClick={() => copyTrackingLink(delivery.stops[0].trackingCode!)}
-                          >
-                            Copy Tracking Link
-                          </Button>
-                        )}
-                        {barcodeScanningEnabled && delivery.stops[0]?.id && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7 bg-transparent"
-                            onClick={() => {
-                              setPackItemsRouteStopId(delivery.stops[0].id)
-                              setPackItemsDeliveryName(delivery.name)
-                            }}
-                          >
-                            Scan Packages
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </CardContent>
@@ -545,30 +577,60 @@ export default function PharmacyDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3 md:space-y-4">
-                {completedDeliveries.length === 0 ? (
+                {loading ? (
+                  <p className="text-center text-muted-foreground py-8">Loading deliveries...</p>
+                ) : completedDeliveries.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No completed deliveries</p>
                 ) : (
-                  completedDeliveries.slice(0, 5).map((delivery) => (
-                    <div
-                      key={delivery.id}
-                      className="flex flex-col md:flex-row md:items-start md:justify-between p-3 md:p-4 border rounded-lg bg-muted/30 gap-3"
-                    >
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                          <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
+                  completedDeliveries.slice(0, 5).map((delivery) => {
+                    const sortedStops = [...delivery.stops].sort((a, b) => a.sequence - b.sequence)
+                    const multiStop = sortedStops.length > 1
+                    return (
+                      <div
+                        key={delivery.id}
+                        className="p-3 md:p-4 border rounded-lg bg-muted/30 space-y-2"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                              <h3 className="font-semibold text-sm md:text-base">{delivery.name}</h3>
+                            </div>
+                            <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                              <p>Driver: {delivery.assignedDriverName}</p>
+                              {/* Fixed: this used to show delivery.startTime mislabeled as
+                                  "Completed" - now shows the real completion time. */}
+                              <p>
+                                Completed: {delivery.completedAt ? new Date(delivery.completedAt).toLocaleString() : "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge className="bg-green-500 w-fit text-xs">Completed</Badge>
                         </div>
-                        <div className="text-xs md:text-sm text-muted-foreground space-y-1">
-                          <p>Driver: {delivery.assignedDriverName}</p>
-                          <p className="break-words">
-                            Dropoff: <AddressWithUnit address={delivery.stops[0].dropoffAddress} size="sm" />
-                          </p>
-                          <p>Completed: {delivery.startTime}</p>
+
+                        {/* Every stop this route had at this pharmacy - previously only
+                            the first stop's dropoff was ever shown. */}
+                        <div className="space-y-1 border-l-2 border-muted pl-3">
+                          {sortedStops.map((stop, i) => (
+                            <p
+                              key={stop.id}
+                              className="flex items-start gap-1.5 text-xs md:text-sm text-muted-foreground break-words"
+                            >
+                              {(stop.status as string) === "failed" ? (
+                                <XCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+                              ) : (
+                                <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0 mt-0.5" />
+                              )}
+                              <span>
+                                {multiStop ? `Stop ${i + 1}: ` : "Dropoff: "}
+                                <AddressWithUnit address={stop.dropoffAddress} size="sm" />
+                              </span>
+                            </p>
+                          ))}
                         </div>
                       </div>
-                      <Badge className="bg-green-500 w-fit text-xs">Completed</Badge>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </CardContent>

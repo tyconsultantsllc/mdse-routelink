@@ -40,19 +40,23 @@ export default function PharmacyMap({ deliveries }: PharmacyMapProps) {
 
     // Draw delivery routes
     deliveries.forEach((delivery) => {
-      const stops = delivery.stops.map((stop) => ({
-        lat: stop.coordinates.pickup.lat,
-        lng: stop.coordinates.pickup.lng,
-      }))
+      if (delivery.stops.length === 0) return
 
-      // Add final dropoff
-      if (delivery.stops.length > 0) {
-        const lastStop = delivery.stops[delivery.stops.length - 1]
-        stops.push({
-          lat: lastStop.coordinates.dropoff.lat,
-          lng: lastStop.coordinates.dropoff.lng,
-        })
-      }
+      // Sort by stop_order so multi-stop routes are drawn in actual visit
+      // order. Previously this plotted one (identical) pickup point per
+      // stop plus only the LAST stop's dropoff - every intermediate dropoff
+      // on a multi-stop route was invisible on this map.
+      const sortedRouteStops = [...delivery.stops].sort((a, b) => a.sequence - b.sequence)
+      const stops = [
+        {
+          lat: sortedRouteStops[0].coordinates.pickup.lat,
+          lng: sortedRouteStops[0].coordinates.pickup.lng,
+        },
+        ...sortedRouteStops.map((stop) => ({
+          lat: stop.coordinates.dropoff.lat,
+          lng: stop.coordinates.dropoff.lng,
+        })),
+      ]
 
       const getPriorityColor = (priority: string) => {
         switch (priority) {
@@ -126,7 +130,7 @@ export default function PharmacyMap({ deliveries }: PharmacyMapProps) {
             <div class="p-2">
               <p class="text-xs font-medium">${delivery.name}</p>
               <p class="text-xs text-gray-600">
-                ${isFirst ? "Pickup" : isLast ? "Delivery" : `Stop ${index}`}
+                ${isFirst ? "Pickup" : `Delivery - Stop ${index}`}
               </p>
             </div>
           `)
