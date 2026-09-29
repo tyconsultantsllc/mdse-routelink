@@ -1,0 +1,36 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+// IMPORTANT: confirm this is your real production URL before building.
+// This app doesn't bundle the web app as static files - it can't, since
+// the app relies on Next.js server actions and server-rendered pages that
+// only work with a real Next.js server behind them (a static export would
+// break login, route assignment, delivery confirmation, everything that
+// currently goes through app/actions/data-actions.ts). Instead, the
+// Android app's WebView is pointed straight at your live, deployed site
+// below - functionally the same as a mobile browser tab, just wrapped in a
+// real installable app with its own icon and (once added) access to native
+// device features.
+const PRODUCTION_URL = 'https://mdse-routelink-git.vercel.app';
+
+const config: CapacitorConfig = {
+  appId: 'com.mdseroutelink.app',
+  appName: 'MDSE RouteLink',
+  // Only used as a local fallback/placeholder - see www/index.html and the
+  // comment above. The real content always comes from server.url below.
+  webDir: 'www',
+  server: {
+    url: PRODUCTION_URL,
+    // Keeps cookies/session storage scoped to your real domain instead of
+    // Capacitor's default "https://localhost" origin, so Supabase auth
+    // (which relies on cookies) behaves exactly like it does in a browser.
+    androidScheme: 'https',
+  },
+  android: {
+    // Since everything here is served over https, there's no legitimate
+    // reason for the WebView to ever load insecure (http) content - block
+    // it outright rather than silently allowing it.
+    allowMixedContent: false,
+  },
+};
+
+export default config;

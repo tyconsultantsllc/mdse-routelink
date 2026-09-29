@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MDSE RouteLink</string>
+    <string name="title_activity_main">MDSE RouteLink</string>
+    <string name="package_name">com.mdseroutelink.app</string>
+    <string name="custom_url_scheme">com.mdseroutelink.app</string>
+</resources>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!--
+  This file is never actually shown to a real user. Capacitor requires a
+  local "webDir" to exist and sync assets from, but capacitor.config.ts
+  below sets server.url to the live, deployed app - so on a real device the
+  WebView navigates straight to that URL instead of loading this file. This
+  only appears for a split second (if ever) before that navigation happens,
+  or if the app is ever run with server.url removed.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>MDSE RouteLink</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: -apple-system, system-ui, Roboto, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Loading MDSE RouteLink&hellip;</p>
+  </body>
+</html>
