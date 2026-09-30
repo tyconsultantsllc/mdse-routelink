@@ -1,10 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { usePathname } from "next/navigation"
 import { Capacitor } from "@capacitor/core"
 import { createClient } from "@/lib/supabase/client"
 
 const ENABLED_KEY = "app_lock_biometric_enabled"
+
+// Routes middleware.ts already treats as not requiring a logged-in user
+// (see the matching check there). The lock screen has no business
+// appearing on these: there's nothing behind it worth protecting, and
+// showing it here is actively misleading if it ever does - see below.
+function isPublicPath(pathname: string | null): boolean {
+  return !pathname || pathname === "/" || pathname.startsWith("/auth") || pathname.startsWith("/track")
+}
 
 type AppLockState = {
   // True once the initial native/availability/session checks have settled -
@@ -38,6 +47,17 @@ type AppLockState = {
  * prompting for a fingerprint in front of it would just be an extra step
  * for nothing.
  *
+ * That "is there a session" check uses the client SDK's fast getSession(),
+ * which trusts whatever's cached locally rather than asking the server -
+ * it can say yes for a moment or two after the real session has actually
+ * gone stale/expired server-side (this app's middleware.ts is what
+ * actually decides that, on every navigation). Locking only on routes
+ * middleware.ts treats as requiring a user (see isPublicPath) means that
+ * gap can never actually surface as a bug: if the server had already
+ * decided to send someone to the login page, the lock screen simply won't
+ * appear there, rather than prompting for a fingerprint scan that then
+ * reveals a login form anyway.
+ *
  * A no-op everywhere outside the native Android app: `isNative` stays
  * false, `locked` stays false, and nothing here ever touches the plain
  * website.
@@ -51,6 +71,12 @@ export function useAppLock() {
     locked: false,
   })
   const listenerRef = useRef<{ remove: () => void } | null>(null)
+  const pathname = usePathname()
+  const pathnameRef = useRef(pathname)
+
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {
@@ -85,9 +111,11 @@ export function useAppLock() {
         isNative: true,
         isAvailable,
         enabled,
-        // Lock right away on cold start if the user opted in and there's
-        // actually a session to protect.
-        locked: enabled && !!session,
+        // Lock right away on cold start if the user opted in, there's
+        // actually a session to protect, and we're not sitting on a page
+        // (login, tracking) that doesn't need protecting in the first
+        // place - see isPublicPath.
+        locked: enabled && !!session && !isPublicPath(pathnameRef.current),
       })
 
       const listener = await App.addListener("appStateChange", ({ isActive }: { isActive: boolean }) => {
@@ -102,7 +130,7 @@ export function useAppLock() {
             .auth.getSession()
             .then(({ data }) => data.session),
         ]).then(([{ value }, activeSession]) => {
-          if (value === "true" && activeSession) {
+          if (value === "true" && activeSession && !isPublicPath(pathnameRef.current)) {
             setState((s) => (s.isAvailable ? { ...s, locked: true } : s))
           }
         })
