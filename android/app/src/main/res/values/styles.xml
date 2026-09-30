@@ -30,5 +30,25 @@
              versions before Android 15, so this is safe on any supported
              device. -->
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+
+        <!-- Android 12+'s real launch splash (the "Theme.SplashScreen" this
+             style extends from). On these OS versions, `android:background`
+             above is ignored in favor of these `windowSplashScreen*`
+             attributes - and this is a hard platform restriction, not
+             something more config can work around: the OS will only ever
+             show a small icon centered on a solid color here, never a full
+             custom image. So instead of fighting that, this reuses the
+             app's own adaptive-icon foreground (no new asset needed) on a
+             background matching its disc color, so at least this brief,
+             unavoidable first frame looks intentional and on-brand. The
+             real "big logo" splash comes immediately after, from the web
+             app itself (see components/app-loading-overlay.tsx) - that's
+             just page content, so it isn't restricted this way. -->
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">#B8D0E0</item>
+        <!-- Required by installSplashScreen(): the theme the app switches to
+             once the native splash is dismissed. -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

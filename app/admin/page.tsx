@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button" // Fixed import to use named export instead of default
@@ -49,6 +50,7 @@ export default function AdminDashboard() {
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [routes, setRoutes] = useState<any[]>([])
   const [recentDeliveries, setRecentDeliveries] = useState<any[]>([])
+  const [selectedDelivery, setSelectedDelivery] = useState<any>(null)
   const [completedTodayCount, setCompletedTodayCount] = useState(0)
   const [failedTodayCount, setFailedTodayCount] = useState(0)
   const [totalDriversCount, setTotalDriversCount] = useState(0)
@@ -192,17 +194,43 @@ export default function AdminDashboard() {
       )
 
       setRecentDeliveries(
-        deliveriesWithDetails.slice(0, 10).map((d: any) => ({
-          id: d.id,
-          driver: d.driver,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.driver_id}`,
-          pharmacy: d.pharmacy,
-          action: d.action,
-          time: new Date(d.timestamp).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        }))
+        deliveriesWithDetails.slice(0, 10).map((d: any) => {
+          // Same shape as the Delivery Logs page builds from this same
+          // getDeliveryLogs() data, so the same DeliveryDetailsModal can
+          // show a row here without a second fetch.
+          const routeInfo = Array.isArray(d.routes) ? d.routes[0] : d.routes
+          const stopInfo = Array.isArray(d.route_stops) ? d.route_stops[0] : d.route_stops
+          return {
+            id: d.id,
+            driver: d.driver,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.driver_id}`,
+            pharmacy: d.pharmacy,
+            action: d.action,
+            date: new Date(d.timestamp).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+            time: new Date(d.timestamp).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            status: d.action === "delivered" ? "completed" : d.action === "failed" ? "failed" : (d.action || "pending"),
+            routeName: routeInfo?.name || "Unknown Route",
+            routeStopId: d.route_stop_id,
+            dropoffAddress: stopInfo?.dropoff_address || "N/A",
+            recipientName: stopInfo?.recipient_name || null,
+            hasSignature: !!stopInfo?.signature_path,
+            returnConfirmedBy: stopInfo?.return_confirmed_by || null,
+            hasReturnSignature: !!stopInfo?.return_signature_path,
+            returnConfirmedAt: stopInfo?.return_confirmed_at
+              ? new Date(stopInfo.return_confirmed_at).toLocaleString()
+              : null,
+            failureReason: d.action === "failed" ? (d.notes || "No reason provided") : null,
+            latitude: d.latitude ?? null,
+            longitude: d.longitude ?? null,
+          }
+        })
       )
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
@@ -392,7 +420,11 @@ export default function AdminDashboard() {
               </div>
               <div className="divide-y divide-border">
                 {recentDeliveries.map((delivery) => (
-                  <div key={delivery.id} className="px-4 md:px-6 py-3 md:py-4">
+                  <div
+                    key={delivery.id}
+                    onClick={() => setSelectedDelivery(delivery)}
+                    className="px-4 md:px-6 py-3 md:py-4 cursor-pointer hover:bg-accent transition-colors"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center flex-1 min-w-0">
                         <Avatar className="h-9 w-9 md:h-10 md:w-10 flex-shrink-0">
@@ -424,6 +456,12 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      <DeliveryDetailsModal
+        open={!!selectedDelivery}
+        onOpenChange={(open) => !open && setSelectedDelivery(null)}
+        delivery={selectedDelivery}
+      />
     </TooltipProvider>
   )
 }

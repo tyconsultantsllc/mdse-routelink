@@ -31,6 +31,29 @@ const config: CapacitorConfig = {
     // it outright rather than silently allowing it.
     allowMixedContent: false,
   },
+  plugins: {
+    // Android 12+ restricts the OS-level launch splash to a small icon on a
+    // plain color for the very first instant the app process starts - a
+    // platform rule, not a Capacitor limitation, and it can't be made to
+    // show a full custom image (see the windowSplashScreen* attributes in
+    // android/app/src/main/res/values/styles.xml, which control how that
+    // small native splash looks). This plugin just holds that native splash
+    // on screen briefly via launchShowDuration, bridging straight into the
+    // web app's own full-size branded loading screen
+    // (components/app-loading-overlay.tsx), which is where the real "big
+    // logo" splash design actually lives. So this duration is intentionally
+    // short - just long enough to avoid a flash of blank white before the
+    // web content paints, not the whole splash experience.
+    SplashScreen: {
+      launchShowDuration: 500,
+      launchFadeOutDuration: 200,
+      launchAutoHide: true,
+      backgroundColor: '#ffffffff',
+      androidSplashResourceName: 'splash',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+    },
+  },
 };
 
 export default config;
