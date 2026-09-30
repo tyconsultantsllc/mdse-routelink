@@ -13,4 +13,11 @@
     <color name="colorPrimary">#305078</color>
     <color name="colorPrimaryDark">#103055</color>
     <color name="colorAccent">#80A0C0</color>
+
+    <!-- Tint Android applies to the monochrome status-bar notification icon
+         (see drawable-*/ic_stat_notification.png and the
+         com.google.firebase.messaging.default_notification_color meta-data
+         in AndroidManifest.xml) - same brand navy as colorPrimary, named
+         separately so its purpose here is obvious at a glance. -->
+    <color name="notificationIconColor">@color/colorPrimary</color>
 </resources>

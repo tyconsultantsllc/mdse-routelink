@@ -33,6 +33,24 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Without this, a real push notification falls back to the full
+             app launcher icon for its status-bar glyph - and Android forces
+             that to render as a plain white blob, since a status-bar icon
+             is required to be a simple white silhouette on transparent, not
+             a full-color image. drawable-*/ic_stat_notification.png is a
+             simplified monochrome mark drawn for exactly this (a bottle
+             with a cross, echoing the real logo's own emblem, simplified
+             enough to read clearly at 24dp); default_notification_color
+             tints it navy to match the brand instead of leaving it plain
+             white. Both are read directly by the Firebase Messaging SDK,
+             independent of anything in capacitor.config.ts. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notificationIconColor" />
     </application>
 
     <!-- Permissions -->
