@@ -174,16 +174,26 @@ export function EditRouteModal({ open, onOpenChange, routeId, onSuccess }: EditR
     setStops(stops.filter((_, i) => i !== index))
   }
 
+  // See add-route-modal.tsx's updateStop for why this needs the functional
+  // setState form: selecting a pharmacy calls this 3x in a row (pharmacyId,
+  // pharmacyName, pickupAddress), and reading the `stops` closure directly
+  // meant only the last of those three calls survived React's batching,
+  // silently dropping the pharmacyId - which looked like the click just
+  // didn't register.
   const updateStop = (index: number, field: "pharmacyId" | "pharmacyName" | "pickupAddress" | "dropoffAddress" | "designatedTime", value: string) => {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], [field]: value }
-    setStops(newStops)
+    setStops((prev) => {
+      const newStops = [...prev]
+      newStops[index] = { ...newStops[index], [field]: value }
+      return newStops
+    })
   }
 
   const updateStopPriority = (index: number, isPriority: boolean) => {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], isPriority }
-    setStops(newStops)
+    setStops((prev) => {
+      const newStops = [...prev]
+      newStops[index] = { ...newStops[index], isPriority }
+      return newStops
+    })
   }
 
   const formatLastDeliveredDate = (iso: string) => {

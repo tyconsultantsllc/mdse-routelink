@@ -176,16 +176,28 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
     setStops(stops.filter((_, i) => i !== index))
   }
 
+  // Uses the functional setState form (prev => ...) rather than reading the
+  // `stops` closure directly. Selecting a pharmacy calls this three times in
+  // a row in one event handler (pharmacyId, then pharmacyName, then
+  // pickupAddress) - with the old `setStops([...stops, ...])` form, all
+  // three calls read the same stale `stops` snapshot from before the click,
+  // so only the LAST call's field survived once React applied the batch,
+  // silently dropping the pharmacyId (and pharmacyName) that were "set"
+  // first. That's why the picker looked like the click didn't register.
   const updateStop = (index: number, field: keyof RouteStopForm, value: string) => {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], [field]: value }
-    setStops(newStops)
+    setStops((prev) => {
+      const newStops = [...prev]
+      newStops[index] = { ...newStops[index], [field]: value }
+      return newStops
+    })
   }
 
   const updateStopPriority = (index: number, isPriority: boolean) => {
-    const newStops = [...stops]
-    newStops[index] = { ...newStops[index], isPriority }
-    setStops(newStops)
+    setStops((prev) => {
+      const newStops = [...prev]
+      newStops[index] = { ...newStops[index], isPriority }
+      return newStops
+    })
   }
 
   const formatLastDeliveredDate = (iso: string) => {
