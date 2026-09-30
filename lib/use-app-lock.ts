@@ -34,6 +34,13 @@ type AppLockState = {
   locked: boolean
 }
 
+// Bumped only at moments it's actually safe to auto-show the native
+// biometric prompt: cold start, and coming back to the foreground while
+// still locked. AppLockGate watches this (not `locked` itself) to decide
+// when to auto-prompt - see the big comment below for why that distinction
+// matters.
+type PromptSignal = number
+
 /**
  * Drives "unlock the app with fingerprint/face" end to end: checks device
  * biometry availability, reads/writes the opt-in preference, and re-locks
@@ -66,6 +73,17 @@ type AppLockState = {
  * without ever storing the person's actual password - see
  * lib/biometric-store.ts for the reasoning behind that trade-off.
  *
+ * `locked` and "it's safe to auto-show the prompt" are deliberately two
+ * different signals. `locked` flips true the moment the app goes to the
+ * *background* (so the real screen is hidden immediately, not for a split
+ * second after coming back), but that's also a moment with no foregrounded
+ * Android activity for a biometric dialog to appear in - auto-attempting
+ * right then just fails instantly, invisibly, before the person ever sees
+ * a prompt. `promptTick` only increments when it's actually safe to try:
+ * on cold start, and again once the app is confirmed back in the
+ * foreground. AppLockGate's auto-prompt effect watches `promptTick`, not
+ * `locked`, for exactly this reason.
+ *
  * A no-op everywhere outside the native Android app: `isNative` stays
  * false, `locked` stays false, and nothing here ever touches the plain
  * website.
@@ -78,6 +96,7 @@ export function useAppLock() {
     enabled: false,
     locked: false,
   })
+  const [promptTick, setPromptTick] = useState<PromptSignal>(0)
   const listenerRef = useRef<{ remove: () => void } | null>(null)
   const authListenerRef = useRef<{ unsubscribe: () => void } | null>(null)
   const pathname = usePathname()
@@ -86,6 +105,11 @@ export function useAppLock() {
   // is registered once on mount and would otherwise only ever see the
   // `enabled` value that was current at that moment.
   const enabledRef = useRef(false)
+  // Mirrors state.locked for the appStateChange listener below, for the
+  // same reason - and updated synchronously alongside setState (not left
+  // to a separate effect) so the resume branch can never read a stale
+  // value from just before a background-triggered lock.
+  const lockedRef = useRef(false)
 
   useEffect(() => {
     pathnameRef.current = pathname
@@ -120,24 +144,45 @@ export function useAppLock() {
       const enabled = stored.value === "true" && isAvailable
       enabledRef.current = enabled
 
+      // Lock right away on cold start if the user opted in, there's
+      // actually a session to protect, and we're not sitting on a page
+      // (login, tracking) that doesn't need protecting in the first
+      // place - see isPublicPath. Cold start is always a moment the app is
+      // genuinely in the foreground (the person just opened it), so it's
+      // also always safe to prompt immediately here.
+      const initialLocked = enabled && !!session && !isPublicPath(pathnameRef.current)
+      lockedRef.current = initialLocked
+
       setState({
         checked: true,
         isNative: true,
         isAvailable,
         enabled,
-        // Lock right away on cold start if the user opted in, there's
-        // actually a session to protect, and we're not sitting on a page
-        // (login, tracking) that doesn't need protecting in the first
-        // place - see isPublicPath.
-        locked: enabled && !!session && !isPublicPath(pathnameRef.current),
+        locked: initialLocked,
       })
 
+      if (initialLocked) {
+        setPromptTick((t) => t + 1)
+      }
+
       const listener = await App.addListener("appStateChange", ({ isActive }: { isActive: boolean }) => {
-        if (isActive) return
+        if (isActive) {
+          // Back in the foreground - this is the only other moment it's
+          // actually safe to show the native prompt (see the big comment
+          // above this hook). Only bump if still locked from the last time
+          // it went to the background.
+          if (lockedRef.current) {
+            setPromptTick((t) => t + 1)
+          }
+          return
+        }
         // Going to background - re-check both the preference and the
         // session fresh (rather than trusting closed-over state, since
-        // either could have changed since mount) before deciding to
-        // re-lock on the next resume.
+        // either could have changed since mount) before deciding whether
+        // the *next* resume should come back locked. Deliberately does not
+        // bump promptTick - there's no foreground activity to show a
+        // dialog in right now, so attempting here would just fail silently
+        // before the person ever sees it.
         Promise.all([
           Preferences.get({ key: BIOMETRIC_ENABLED_KEY }),
           createClient()
@@ -145,6 +190,7 @@ export function useAppLock() {
             .then(({ data }) => data.session),
         ]).then(([{ value }, activeSession]) => {
           if (value === "true" && activeSession && !isPublicPath(pathnameRef.current)) {
+            lockedRef.current = true
             setState((s) => (s.isAvailable ? { ...s, locked: true } : s))
           }
         })
@@ -218,6 +264,7 @@ export function useAppLock() {
         androidSubtitle: "Use your fingerprint or face to continue",
         androidConfirmationRequired: false,
       })
+      lockedRef.current = false
       setState((s) => ({ ...s, locked: false }))
       return true
     } catch {
@@ -225,5 +272,5 @@ export function useAppLock() {
     }
   }, [])
 
-  return { ...state, setEnabled, unlock }
+  return { ...state, promptTick, setEnabled, unlock }
 }

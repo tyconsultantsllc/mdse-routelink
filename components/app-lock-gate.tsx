@@ -15,7 +15,7 @@ import { useAppLock } from "@/lib/use-app-lock"
  * addresses, signatures) is visible until authentication succeeds.
  */
 export function AppLockGate({ children }: { children: React.ReactNode }) {
-  const { checked, locked, unlock } = useAppLock()
+  const { checked, locked, promptTick, unlock } = useAppLock()
   const [isUnlocking, setIsUnlocking] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -28,15 +28,20 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    if (!locked) {
-      setFailed(false)
-      return
-    }
-    // Prompt automatically the moment the lock screen appears, so most
-    // opens are just "see the prompt, touch the sensor" with no extra tap.
+    if (!locked) setFailed(false)
+  }, [locked])
+
+  useEffect(() => {
+    // promptTick only ticks at moments useAppLock has confirmed are
+    // actually safe to show the native prompt in (cold start, or genuinely
+    // back in the foreground) - never while still backgrounded, which is
+    // what used to make this fire, fail invisibly with no dialog ever
+    // shown, and leave "Authentication failed" waiting until the next
+    // manual tap. See the comment on useAppLock for the full reasoning.
+    if (promptTick === 0 || !locked) return
     handleUnlock()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked])
+  }, [promptTick])
 
   return (
     <>
