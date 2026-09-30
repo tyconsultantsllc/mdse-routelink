@@ -1,6 +1,8 @@
 // Utility functions for exporting data to CSV and PDF formats
 
-export function exportToCSV(data: Record<string, any>[], filename: string) {
+import { saveOrShareFile, isNativeApp, type SaveOrShareResult } from "@/lib/native-file"
+
+export async function exportToCSV(data: Record<string, any>[], filename: string): Promise<SaveOrShareResult | void> {
   if (data.length === 0) return
 
   // Get headers from the first object
@@ -23,17 +25,10 @@ export function exportToCSV(data: Record<string, any>[], filename: string) {
     ),
   ].join("\n")
 
-  // Create download link
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-  const link = document.createElement("a")
-  const url = URL.createObjectURL(blob)
-
-  link.setAttribute("href", url)
-  link.setAttribute("download", `${filename}.csv`)
-  link.style.visibility = "hidden"
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  // On regular web this downloads a .csv the usual way; inside the wrapped
+  // Android app (where a plain download silently does nothing) it opens the
+  // OS share sheet instead so the file can be saved or shared.
+  return saveOrShareFile(csvContent, `${filename}.csv`, "text/csv;charset=utf-8;")
 }
 
 export function generateReportHTML(title: string, data: any) {
@@ -243,7 +238,18 @@ export function generatePaystubHTML(params: {
   `
 }
 
-export function printReport(html: string) {
+export async function printReport(html: string): Promise<SaveOrShareResult> {
+  if (isNativeApp()) {
+    // window.open("", "_blank") for a second window isn't supported inside
+    // the wrapped app's WebView (it needs custom native code to handle new
+    // windows, which this app doesn't have) - it would just silently return
+    // null, so the print dialog would never appear. Instead, hand the report
+    // off as an .html file through the share sheet: the person can open it
+    // in a real browser to print/save as PDF from there, or just share it.
+    await saveOrShareFile(html, `report-${Date.now()}.html`, "text/html")
+    return { method: "share" }
+  }
+
   const printWindow = window.open("", "_blank")
   if (printWindow) {
     printWindow.document.write(html)
@@ -255,4 +261,5 @@ export function printReport(html: string) {
       printWindow.print()
     }, 250)
   }
+  return { method: "download" }
 }

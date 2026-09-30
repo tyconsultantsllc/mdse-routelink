@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { FileText, FileSpreadsheet, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { exportToCSV, generateReportHTML, printReport } from "@/lib/export-utils"
+import { isNativeApp } from "@/lib/native-file"
 
 interface ExportDialogProps {
   open: boolean
@@ -22,7 +23,7 @@ export function ExportDialog({ open, onOpenChange, reportType, data }: ExportDia
   const [format, setFormat] = useState("pdf")
   const [includeSummary, setIncludeSummary] = useState(true)
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (format === "csv") {
       // Export as CSV
       let csvData: Record<string, any>[] = []
@@ -47,11 +48,13 @@ export function ExportDialog({ open, onOpenChange, reportType, data }: ExportDia
           break
       }
 
-      exportToCSV(csvData, filename)
+      await exportToCSV(csvData, filename)
 
       toast({
         title: "Export Successful",
-        description: `${filename}.csv has been downloaded`,
+        description: isNativeApp()
+          ? `Choose where to save or share ${filename}.csv`
+          : `${filename}.csv has been downloaded`,
       })
     } else {
       // Export as PDF (using print dialog)
@@ -108,11 +111,13 @@ export function ExportDialog({ open, onOpenChange, reportType, data }: ExportDia
       `
 
       const html = generateReportHTML(reportTitle, reportContent)
-      printReport(html)
+      await printReport(html)
 
       toast({
-        title: "Opening Print Dialog",
-        description: "Save as PDF from the print dialog",
+        title: isNativeApp() ? "Report Ready" : "Opening Print Dialog",
+        description: isNativeApp()
+          ? "Choose an app to open, save, or print the report from"
+          : "Save as PDF from the print dialog",
       })
     }
 

@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { getDriverDetails } from "@/lib/region-utils"
+import { saveOrShareFile, isNativeApp } from "@/lib/native-file"
 import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin, Download } from "lucide-react"
 
 const regionLabel = (v: string) => (v === "socal" ? "Southern California" : v === "minnesota" ? "Minnesota" : "No region")
@@ -337,17 +338,13 @@ export default function SettingsPage() {
         routes,
         deliveryLogs,
       }
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `routelink-export-${new Date().toISOString().slice(0, 10)}.json`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
+      const filename = `routelink-export-${new Date().toISOString().slice(0, 10)}.json`
+      await saveOrShareFile(JSON.stringify(payload, null, 2), filename, "application/json")
 
-      toast({ title: "Export ready", description: "Your data export has downloaded." })
+      toast({
+        title: "Export ready",
+        description: isNativeApp() ? `Choose where to save or share ${filename}` : "Your data export has downloaded.",
+      })
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to export data", variant: "destructive" })
     } finally {
