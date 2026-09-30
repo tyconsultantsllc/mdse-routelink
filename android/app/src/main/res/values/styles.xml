@@ -18,5 +18,17 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Apps targeting SDK 35 (Android 15) draw edge-to-edge by default -
+             the WebView's content extends behind the status bar/notification
+             shade unless the page itself adds safe-area padding, which is
+             what made the very top of the app hard to tap (touches there
+             were landing on the status bar's pull-down gesture area instead
+             of the page). This theme attribute is Android's own documented
+             opt-out for exactly this situation - it makes the system
+             reserve space for the status/navigation bars again, the same
+             way it always did before Android 15. It's silently ignored on
+             versions before Android 15, so this is safe on any supported
+             device. -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>
