@@ -49,4 +49,11 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Required on Android 13+ to show push notifications at all - the
+         app must declare this, then ask for it at runtime (handled by
+         @capacitor/push-notifications' requestPermissions(), called from
+         lib/use-push-registration.ts). Silently ignored on older Android
+         versions, which never required this permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

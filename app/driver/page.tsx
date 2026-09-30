@@ -30,6 +30,9 @@ import {
   countQueuedActions,
   isNetworkError,
 } from "@/lib/offline-queue"
+import { NotificationCenter } from "@/components/notification-center"
+import { useNotifications } from "@/lib/use-notifications"
+import { usePushRegistration } from "@/lib/use-push-registration"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -97,6 +100,8 @@ export default function DriverTrackingPage() {
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const [deliveryDetailsOpen, setDeliveryDetailsOpen] = useState(false)
   const [deliveryDetails, setDeliveryDetails] = useState<any>(null)
+  const { notifications, markAsRead, markAllAsRead, dismiss } = useNotifications()
+  usePushRegistration(driverId)
   const syncingRef = useRef(false)
 
   useEffect(() => {
@@ -822,6 +827,12 @@ export default function DriverTrackingPage() {
                 />
                 <span className="text-xs md:text-sm font-medium">{isTracking ? "Active" : "Paused"}</span>
               </div>
+              <NotificationCenter
+                notifications={notifications}
+                onMarkAsRead={markAsRead}
+                onMarkAllAsRead={markAllAsRead}
+                onDismiss={dismiss}
+              />
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>

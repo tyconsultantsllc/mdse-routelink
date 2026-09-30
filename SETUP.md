@@ -63,6 +63,45 @@ The seed script creates these demo accounts:
 - **Driver**: driver@pharmatrack.com / driver123  
 - **Pharmacy**: pharmacy@cvs.com / pharmacy123
 
+## Push Notifications (optional)
+
+The app always has an in-app notification bell (drivers get notified when
+assigned a route; pharmacies get notified when a delivery is
+delivered/failed) - that part works with zero setup. Real push
+notifications to a phone - so it shows up even when the app is closed -
+additionally need a Firebase project. Until you do this, push sending
+silently no-ops and everything else keeps working normally.
+
+### 1. Create a Firebase project
+
+1. Go to the [Firebase Console](https://console.firebase.google.com/) and create a project (or use an existing one).
+2. Add an Android app to it with package name `com.mdseroutelink.app` (must match exactly - it's set in `capacitor.config.ts` and `android/app/build.gradle`).
+3. Download the `google-services.json` file it gives you and place it at `android/app/google-services.json`. The Android build already knows to pick it up automatically if it's present, and to skip push notifications gracefully if it isn't.
+
+### 2. Get a service account key (for the server to send pushes)
+
+1. In the Firebase Console, go to **Project Settings** → **Service Accounts**.
+2. Click **Generate new private key** - this downloads a JSON file. Keep it secret; don't commit it.
+3. From that JSON file, take three values for your environment variables (`.env.local` for local dev, Vercel's dashboard for production):
+\`\`\`env
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project-id.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMII...\n-----END PRIVATE KEY-----\n"
+\`\`\`
+   Keep `FIREBASE_PRIVATE_KEY` as one line with literal `\n` sequences (not real line breaks) - that's how the JSON file already has it, and how the app expects to read it back.
+
+### 3. Run the database migration
+
+Run `scripts/030_notifications.sql` in the Supabase SQL Editor (same process as the other numbered scripts above) - it creates the `notifications` and `push_tokens` tables both features rely on.
+
+### 4. Rebuild the Android app
+
+\`\`\`bash
+npm install
+npx cap sync android
+\`\`\`
+Then rebuild in Android Studio as usual. The next time someone opens the app and grants the notification permission, their device registers itself automatically.
+
 ## Production Deployment
 
 When deploying to Vercel:
@@ -71,6 +110,8 @@ When deploying to Vercel:
 2. Add environment variables in Vercel dashboard:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` - optional, only needed for real push notifications (see "Push Notifications" above)
 3. Deploy!
 
 ## Troubleshooting

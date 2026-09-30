@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getDriverDetails } from '@/lib/region-utils'
+import { notifyDriverRouteAssigned, notifyPharmacyDeliveryResult } from '@/lib/notifications'
 
 function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -921,6 +922,16 @@ async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClien
   const { error: stopsError } = await supabase.from('route_stops').insert(stopsToInsert)
   if (stopsError) throw stopsError
 
+  if (route.driver_id) {
+    // Best-effort - a notification failure should never block the route
+    // from being created.
+    try {
+      await notifyDriverRouteAssigned(supabase, route.driver_id, { name: route.name, startTime: route.start_time })
+    } catch (notifyError) {
+      console.error('Route-assigned notification failed:', notifyError)
+    }
+  }
+
   return route
 }
 
@@ -1153,8 +1164,8 @@ export async function assignDriverToRoute(routeId: number, driverId: string) {
   }
 
   const supabase = createAdminClient()
-  
-  const { error } = await supabase
+
+  const { data: route, error } = await supabase
     .from('routes')
     .update({
       driver_id: driverId,
@@ -1164,9 +1175,58 @@ export async function assignDriverToRoute(routeId: number, driverId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', routeId)
+    .select('name, start_time')
+    .single()
 
   if (error) throw error
-  
+
+  // Best-effort - a notification failure should never block the
+  // assignment itself.
+  try {
+    await notifyDriverRouteAssigned(supabase, driverId, { name: route.name, startTime: route.start_time })
+  } catch (notifyError) {
+    console.error('Route-assigned notification failed:', notifyError)
+  }
+
+  return { success: true }
+}
+
+/**
+ * Notifies a pharmacy's opted-in contacts once a driver marks one of their
+ * stops delivered or failed. Called from lib/driver-actions.ts right after
+ * the driver's own (client-side, RLS-protected) status write succeeds -
+ * this is the server-side hop that's needed since the admin client used to
+ * write the notification (and, from there, send a push) can only be used
+ * from server code, never from the browser client the driver portal
+ * otherwise uses for these actions.
+ */
+export async function notifyPharmacyOfDeliveryResult(
+  routeId: number,
+  pharmacyId: string,
+  status: 'delivered' | 'failed',
+  reason?: string | null,
+) {
+  const { role } = await verifyAuth()
+  if (role !== 'driver' && role !== 'admin') {
+    throw new Error('Forbidden')
+  }
+
+  const supabase = createAdminClient()
+
+  // Best-effort - this only sends a notification, so it should never
+  // surface an error back to a driver who just finished a real delivery
+  // confirmation.
+  try {
+    const { data: route } = await supabase.from('routes').select('name').eq('id', routeId).single()
+    await notifyPharmacyDeliveryResult(supabase, pharmacyId, {
+      status,
+      routeName: route?.name ?? null,
+      reason: reason ?? null,
+    })
+  } catch (notifyError) {
+    console.error('Delivery-result notification failed:', notifyError)
+  }
+
   return { success: true }
 }
 
@@ -1608,10 +1668,34 @@ export async function updateRouteOccurrence(
 
   if (routeData.driverId !== undefined) {
     const supabase = createAdminClient()
+
+    // Only notify the driver when this edit is actually changing who's
+    // assigned - otherwise saving any other field on an already-assigned
+    // route (its time, its stops, its priority) would re-fire "you've been
+    // assigned" every time, since the edit form always resubmits whichever
+    // driver is currently selected.
+    const { data: existingRoute } = await supabase.from('routes').select('driver_id').eq('id', routeId).single()
+    const driverIsChanging = (existingRoute?.driver_id ?? null) !== (routeData.driverId ?? null)
+
     await supabase
       .from('routes')
       .update({ driver_id: routeData.driverId, driver_confirmation: 'pending', confirmation_resolved_at: null })
       .eq('id', routeId)
+
+    if (driverIsChanging && routeData.driverId) {
+      // Best-effort - never block the save over a notification failure.
+      try {
+        const { data: updatedRoute } = await supabase.from('routes').select('name, start_time').eq('id', routeId).single()
+        if (updatedRoute) {
+          await notifyDriverRouteAssigned(supabase, routeData.driverId, {
+            name: updatedRoute.name,
+            startTime: updatedRoute.start_time,
+          })
+        }
+      } catch (notifyError) {
+        console.error('Route-assigned notification failed:', notifyError)
+      }
+    }
   }
 
   if (scope === 'this') {
@@ -2389,4 +2473,89 @@ export async function deleteAnnouncement(announcementId: string) {
   const { error } = await supabase.from('announcements').delete().eq('id', announcementId)
 
   if (error) throw error
+}
+
+// --- Notifications (see scripts/030_notifications.sql, lib/notifications.ts) ---
+
+/**
+ * The signed-in user's own most recent notifications (any role), for the
+ * in-app bell. Dismissed ones are left out entirely - once someone
+ * dismisses a notification it's gone for good, same as closing a toast.
+ */
+export async function getMyNotifications() {
+  const { userId } = await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('id, severity, title, message, read, created_at')
+    .eq('user_id', userId)
+    .is('dismissed_at', null)
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  if (error) throw error
+  return data
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const { userId } = await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('id', notificationId)
+    .eq('user_id', userId) // scoped to the caller's own rows even though this client bypasses RLS
+
+  if (error) throw error
+  return { success: true }
+}
+
+export async function markAllNotificationsRead() {
+  const { userId } = await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('read', false)
+
+  if (error) throw error
+  return { success: true }
+}
+
+export async function dismissNotification(notificationId: string) {
+  const { userId } = await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq('id', notificationId)
+    .eq('user_id', userId)
+
+  if (error) throw error
+  return { success: true }
+}
+
+/**
+ * Registers (or re-registers) this device for push notifications. Called
+ * once a real FCM token comes back from the native registration
+ * (lib/use-push-registration.ts). Upserts on the token itself, not on
+ * (user_id, token) - a device that gets reused by a different login should
+ * end up pointing at whoever's logged in now, not accumulate a stale row
+ * for the previous account.
+ */
+export async function savePushToken(token: string, platform: 'android' | 'ios' = 'android') {
+  const { userId } = await verifyAuth()
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('push_tokens')
+    .upsert({ user_id: userId, token, platform }, { onConflict: 'token' })
+
+  if (error) throw error
+  return { success: true }
 }

@@ -19,6 +19,9 @@ import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 import type { Route } from "@/lib/types"
 import dynamic from "next/dynamic"
 import { createClient } from "@/lib/supabase/client"
+import { NotificationCenter } from "@/components/notification-center"
+import { useNotifications } from "@/lib/use-notifications"
+import { usePushRegistration } from "@/lib/use-push-registration"
 
 // Dynamic import for pharmacy map component
 const PharmacyMap = dynamic(() => import("@/components/pharmacy-map"), {
@@ -43,6 +46,8 @@ export default function PharmacyDashboard() {
   const [requestRouteOpen, setRequestRouteOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [myReports, setMyReports] = useState<any[]>([])
+  const { notifications, markAsRead, markAllAsRead, dismiss } = useNotifications()
+  usePushRegistration(userId || null)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -321,6 +326,12 @@ export default function PharmacyDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <NotificationCenter
+                notifications={notifications}
+                onMarkAsRead={markAsRead}
+                onMarkAllAsRead={markAllAsRead}
+                onDismiss={dismiss}
+              />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
+import { notifyPharmacyOfDeliveryResult } from "@/app/actions/data-actions"
 
 /**
  * These run in the browser using the anon Supabase client, matching how the
@@ -8,6 +9,12 @@ import { createClient } from "@/lib/supabase/client"
  *   - delivery_logs_insert_driver_admin
  *   - storage policies in scripts/004_delivery_confirmation.sql
  * Run scripts/004_delivery_confirmation.sql in Supabase before using these.
+ *
+ * notifyPharmacyOfDeliveryResult is a 'use server' action (defined in
+ * app/actions/data-actions.ts) - Next compiles the import below into a
+ * network call, so it's fine to call a server action from this
+ * browser-side module the same way the driver portal already calls these
+ * functions from a client component.
  */
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
@@ -109,6 +116,13 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
   // roll that back or block the driver, but it should surface somewhere.
   if (logError) console.error("Delivery log insert failed:", logError.message)
 
+  // Fire-and-forget: notifying the pharmacy is a nice-to-have, not
+  // something worth making the driver wait on before their confirmation
+  // screen moves on, especially on a spotty connection.
+  notifyPharmacyOfDeliveryResult(params.routeId, params.pharmacyId, "delivered").catch((err) =>
+    console.error("Delivery-result notification failed:", err),
+  )
+
   return { signaturePath, photoPaths }
 }
 
@@ -145,6 +159,11 @@ export async function failDeliveryStop(params: {
   })
 
   if (logError) console.error("Delivery log insert failed:", logError.message)
+
+  // Fire-and-forget, same reasoning as the delivered path above.
+  notifyPharmacyOfDeliveryResult(params.routeId, params.pharmacyId, "failed", params.reason).catch((err) =>
+    console.error("Delivery-result notification failed:", err),
+  )
 }
 
 interface ConfirmReturnParams {
