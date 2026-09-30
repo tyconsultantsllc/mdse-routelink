@@ -326,7 +326,11 @@ export default function RouteMap({ highlightedRouteId, onHighlightMissing, onDra
           was never broken - it was rendering at 0 pixels tall, invisibly,
           every time. An inline style always wins over any stylesheet rule
           (layered or not), so it's the one thing that reliably fixes this. */}
-      <div ref={containerRef} className="w-full rounded-lg" style={{ height: 500 }} />
+      {/* `isolate` gives this its own stacking context - see admin-map.tsx
+          for why: without it, Leaflet's internal panes (z-index up to 700)
+          aren't contained to this box and can render above unrelated
+          fixed-position UI elsewhere on the page. */}
+      <div ref={containerRef} className="w-full rounded-lg isolate" style={{ height: 500 }} />
       {isGeocoding && (
         <div className="absolute top-2 right-2 bg-card border rounded-md px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
           Locating stops...

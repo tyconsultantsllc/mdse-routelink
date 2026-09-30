@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { useAdminMobileMenu } from "@/lib/admin-mobile-menu"
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: Home },
@@ -50,7 +51,9 @@ export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Shared with AdminHeader's own hamburger button - see lib/admin-mobile-menu.tsx
+  // for why this can't just be local state here.
+  const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useAdminMobileMenu()
   const [openReportsCount, setOpenReportsCount] = useState(0)
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
   const [adminName, setAdminName] = useState("Admin User")
@@ -129,7 +132,7 @@ export function AdminSidebar() {
             <Truck className="text-primary h-6 w-6" />
             <span className="ml-2 text-lg font-bold text-foreground">MDSE RouteLink</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <Button variant="ghost" size="icon" onClick={toggleMobileMenu}>
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </Button>
         </div>
@@ -138,7 +141,7 @@ export function AdminSidebar() {
       {mobileMenuOpen && (
         <div
           className="md:hidden fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={closeMobileMenu}
         />
       )}
 
@@ -166,7 +169,7 @@ export function AdminSidebar() {
                       <TooltipTrigger asChild>
                         <Link
                           href={item.href}
-                          onClick={() => setMobileMenuOpen(false)}
+                          onClick={closeMobileMenu}
                           className={`flex items-center px-4 py-2 text-sm font-medium rounded-md group transition-colors ${
                             isActive
                               ? "text-primary-foreground bg-primary"

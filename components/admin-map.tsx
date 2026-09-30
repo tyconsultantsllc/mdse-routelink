@@ -313,5 +313,11 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
     })
   }, [drivers])
 
-  return <div ref={containerRef} className="h-full w-full rounded-lg" />
+  // `isolate` gives this its own stacking context. Without it, Leaflet's
+  // internal panes (tiles/markers/popups use z-index up to 700 - see
+  // leaflet.css) aren't contained to this box, so they compare directly
+  // against unrelated fixed-position UI elsewhere on the page - notably
+  // the mobile admin sidebar (z-40), which the map would otherwise render
+  // on top of whenever it's open.
+  return <div ref={containerRef} className="h-full w-full rounded-lg isolate" />
 }

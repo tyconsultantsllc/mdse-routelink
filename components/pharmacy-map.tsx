@@ -157,5 +157,8 @@ export default function PharmacyMap({ deliveries }: PharmacyMapProps) {
   // `height: 100%` rule beats any Tailwind (layered) height class regardless
   // of source order, collapsing this to 0px with no sized ancestor to fill.
   // Inline style always wins.
-  return <div ref={containerRef} className="w-full rounded-lg" style={{ height: 400 }} />
+  // See admin-map.tsx for why `isolate` is needed - keeps Leaflet's
+  // internal panes (z-index up to 700) from rendering above unrelated
+  // fixed-position UI elsewhere on the page.
+  return <div ref={containerRef} className="w-full rounded-lg isolate" style={{ height: 400 }} />
 }

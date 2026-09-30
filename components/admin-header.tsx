@@ -2,13 +2,14 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
-import { Menu, LogOut } from "lucide-react"
+import { Menu, X, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NotificationCenter, type Notification } from "@/components/notification-center"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
+import { useAdminMobileMenu } from "@/lib/admin-mobile-menu"
 
 interface AdminHeaderProps {
   title: string
@@ -18,6 +19,11 @@ interface AdminHeaderProps {
 export function AdminHeader({ title, children }: AdminHeaderProps) {
   const router = useRouter()
   const { toast } = useToast()
+  // Shared with AdminSidebar - this button opens that same drawer. See
+  // lib/admin-mobile-menu.tsx for why this needs to be shared state rather
+  // than something local to either component: they're independent siblings
+  // rendered by each admin page, with no state of their own in common.
+  const { isOpen: mobileMenuOpen, toggle: toggleMobileMenu } = useAdminMobileMenu()
   const [notifications, setNotifications] = useState<Notification[]>([])
   // Dismissed/read state is session-only, tracked locally here rather than
   // persisted - the underlying items (reports, messages) already have their
@@ -172,8 +178,8 @@ export function AdminHeader({ title, children }: AdminHeaderProps) {
     <div className="flex-shrink-0 bg-card border-b border-border">
       <div className="flex justify-between items-center h-16 px-4">
         <div className="flex items-center md:hidden">
-          <Button variant="ghost" size="icon">
-            <Menu className="h-5 w-5" />
+          <Button variant="ghost" size="icon" onClick={toggleMobileMenu}>
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
         </div>
         <div className="flex-1 flex justify-between items-center">

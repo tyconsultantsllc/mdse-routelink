@@ -69,7 +69,12 @@ export function DriverLocationModal({
                 un-layered `height: 100%` rule beats any Tailwind (layered)
                 height class regardless of source order, collapsing this to
                 0px with no sized ancestor to fill. Inline style always wins. */}
-            <div ref={containerRef} className="w-full rounded-md" style={{ height: 320 }} />
+            {/* `isolate` gives this its own stacking context - see
+                admin-map.tsx for why: without it, Leaflet's internal panes
+                (z-index up to 700) aren't contained to this box and can
+                render above unrelated fixed-position UI elsewhere on the
+                page, including this same dialog's own overlay. */}
+            <div ref={containerRef} className="w-full rounded-md isolate" style={{ height: 320 }} />
             {lastUpdate && (
               <p className="text-xs text-muted-foreground text-center">
                 Last updated {new Date(lastUpdate).toLocaleString()}
