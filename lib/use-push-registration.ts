@@ -7,22 +7,28 @@
  * Android-app-only feature; the web app's own in-app notification bell
  * (lib/use-notifications.ts) is what everyone else gets.
  *
- * This only gets a device as far as "able to receive a push" - whether one
- * actually arrives also depends on the server having Firebase configured
- * (lib/push.ts) and the native android/app/google-services.json file
- * being in place (see SETUP.md). Until both of those are done, registration
- * itself will simply fail quietly (caught below) or never produce a token -
- * same fail-open shape as the rest of the app's optional integrations.
+ * Gated behind NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED, which should stay
+ * unset/"false" until android/app/google-services.json is actually in
+ * place (see SETUP.md). This isn't just "quieter until configured" - the
+ * underlying @capacitor/push-notifications plugin calls straight into the
+ * Firebase Android SDK with no guard of its own, and when Firebase hasn't
+ * been initialized (no google-services.json), that throws an uncaught
+ * native exception that crashes the whole app, not a rejected promise this
+ * file could catch. So this flag is a hard gate, not a soft default: flip
+ * it to "true" only after Firebase setup is done and the app has been
+ * rebuilt with google-services.json present.
  */
 import { useEffect, useRef } from "react"
 import { isNativeApp } from "@/lib/native-file"
 import { savePushToken } from "@/app/actions/data-actions"
 
+const PUSH_ENABLED = process.env.NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED === "true"
+
 export function usePushRegistration(userId: string | null | undefined) {
   const registeredForRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!userId || !isNativeApp() || registeredForRef.current === userId) return
+    if (!PUSH_ENABLED || !userId || !isNativeApp() || registeredForRef.current === userId) return
     registeredForRef.current = userId
 
     let removeListeners: (() => void) | undefined

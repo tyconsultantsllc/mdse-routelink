@@ -69,14 +69,24 @@ The app always has an in-app notification bell (drivers get notified when
 assigned a route; pharmacies get notified when a delivery is
 delivered/failed) - that part works with zero setup. Real push
 notifications to a phone - so it shows up even when the app is closed -
-additionally need a Firebase project. Until you do this, push sending
-silently no-ops and everything else keeps working normally.
+additionally need a Firebase project.
+
+**Until you finish all of the steps below, leave this turned off** (it is,
+by default). This isn't like the app's other optional integrations, which
+just quietly do nothing until configured - the Android push-notifications
+plugin talks directly to Firebase's native SDK with no safety net of its
+own, and if it tries to register for push before Firebase is actually set
+up, it crashes the app outright rather than failing gracefully. The
+`NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED` flag in step 5 exists specifically
+to prevent that - the app never even attempts registration unless it's
+explicitly set to `true`, which you should only do once steps 1-4 are done
+and the app has been rebuilt with `google-services.json` in place.
 
 ### 1. Create a Firebase project
 
 1. Go to the [Firebase Console](https://console.firebase.google.com/) and create a project (or use an existing one).
 2. Add an Android app to it with package name `com.mdseroutelink.app` (must match exactly - it's set in `capacitor.config.ts` and `android/app/build.gradle`).
-3. Download the `google-services.json` file it gives you and place it at `android/app/google-services.json`. The Android build already knows to pick it up automatically if it's present, and to skip push notifications gracefully if it isn't.
+3. Download the `google-services.json` file it gives you and place it at `android/app/google-services.json`. The Android build already knows to pick it up automatically if it's present, and to skip applying the Firebase Gradle plugin (not the same as skipping the crash above - see the warning at the top of this section) if it isn't.
 
 ### 2. Get a service account key (for the server to send pushes)
 
@@ -94,13 +104,23 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMII...\n-----END PRIVATE KEY-
 
 Run `scripts/030_notifications.sql` in the Supabase SQL Editor (same process as the other numbered scripts above) - it creates the `notifications` and `push_tokens` tables both features rely on.
 
-### 4. Rebuild the Android app
+### 4. Rebuild the Android app with google-services.json in place
 
 \`\`\`bash
 npm install
 npx cap sync android
 \`\`\`
-Then rebuild in Android Studio as usual. The next time someone opens the app and grants the notification permission, their device registers itself automatically.
+Then rebuild in Android Studio as usual, with `android/app/google-services.json` already sitting there from step 1.
+
+### 5. Turn the feature on
+
+Only now, add this to `.env.local` (and to Vercel's environment variables for production):
+\`\`\`env
+NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED=true
+\`\`\`
+Then rebuild the web app and the Android app one more time (this flag is
+read at build time). The next time someone opens the app and grants the
+notification permission, their device registers itself automatically.
 
 ## Production Deployment
 
@@ -111,7 +131,7 @@ When deploying to Vercel:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` - optional, only needed for real push notifications (see "Push Notifications" above)
+   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED` - optional, only needed for real push notifications, and only once you've finished every step under "Push Notifications" above - don't add `NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED=true` before then, it's what prevents the app from crashing on devices without Firebase set up
 3. Deploy!
 
 ## Troubleshooting
