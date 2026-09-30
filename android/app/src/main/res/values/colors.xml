@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand colors, sampled from the real MDS Express logo (navy ring /
+         wordmark + light-blue disc). These override the generic Capacitor
+         template defaults (indigo/pink) that this app was still shipping
+         with under the hood - AppTheme referenced @color/colorPrimary etc.
+         in styles.xml, but this file never existed, so it was silently
+         falling back to Capacitor's own placeholder colors.xml the whole
+         time. colorPrimaryDark in particular is what paints the status bar
+         background now that windowOptOutEdgeToEdgeEnforcement (see
+         styles.xml) has the system reserve space for it again - previously
+         that was rendering as a mismatched generic indigo. -->
+    <color name="colorPrimary">#305078</color>
+    <color name="colorPrimaryDark">#103055</color>
+    <color name="colorAccent">#80A0C0</color>
+</resources>
