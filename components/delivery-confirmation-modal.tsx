@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { Camera, CheckCircle, X } from "lucide-react"
+import { Camera, CheckCircle, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -48,6 +48,7 @@ export function DeliveryConfirmationModal({
   const [notes, setNotes] = useState("")
   const signaturePadRef = useRef<SignaturePadHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -139,9 +140,29 @@ export function DeliveryConfirmationModal({
           <div className="space-y-2">
             <Label>Delivery Photos (Optional)</Label>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
+              {/* Two separate inputs on purpose: a browser/WebView only offers a
+                  live-camera option on a *single*-file input with `capture` set -
+                  once `multiple` is present (needed for picking several photos
+                  from the gallery at once), most browsers drop the camera option
+                  entirely and fall back to a gallery/file picker. Splitting these
+                  into two buttons is what reliably gets a real camera option on
+                  both mobile web and the wrapped Android app, rather than always
+                  landing on the gallery picker. */}
+              <Button variant="outline" onClick={() => cameraInputRef.current?.click()} className="w-full">
                 <Camera className="mr-2 h-4 w-4" />
-                Take/Upload Photos
+                Take Photo
+              </Button>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
+                <Upload className="mr-2 h-4 w-4" />
+                Choose from Gallery
               </Button>
               <input
                 ref={fileInputRef}
