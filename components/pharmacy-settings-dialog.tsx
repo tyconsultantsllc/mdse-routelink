@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { PharmacyNotificationSettings } from "@/components/pharmacy-notification-settings"
 import { PharmacyDeliverySettings } from "@/components/pharmacy-delivery-settings"
+import { BiometricLockSetting } from "@/components/biometric-lock-setting"
 
 interface PharmacySettingsDialogProps {
   open: boolean
@@ -182,6 +183,8 @@ export function PharmacySettingsDialog({ open, onOpenChange, userId, userEmail }
                     {isSavingPassword ? "Updating..." : "Update Password"}
                   </Button>
                 </form>
+
+                <BiometricLockSetting />
               </TabsContent>
             </Tabs>
           )}

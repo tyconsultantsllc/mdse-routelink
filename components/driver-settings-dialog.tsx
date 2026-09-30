@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { ChangeEmailDialog } from "@/components/change-email-dialog"
+import { BiometricLockSetting } from "@/components/biometric-lock-setting"
 
 interface DriverSettingsDialogProps {
   open: boolean
@@ -204,6 +205,8 @@ export function DriverSettingsDialog({ open, onOpenChange, driverId, driverEmail
                     {isSavingPassword ? "Updating..." : "Update Password"}
                   </Button>
                 </form>
+
+                <BiometricLockSetting />
               </TabsContent>
             </Tabs>
           )}

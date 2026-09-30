@@ -27,6 +27,7 @@ import { ChangeEmailDialog } from "@/components/change-email-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { getDriverDetails } from "@/lib/region-utils"
 import { saveOrShareFile, isNativeApp } from "@/lib/native-file"
+import { BiometricLockSetting } from "@/components/biometric-lock-setting"
 import { User, Bell, Shield, Building2, Mail, Globe, Save, Upload, MapPin, Download } from "lucide-react"
 
 const regionLabel = (v: string) => (v === "socal" ? "Southern California" : v === "minnesota" ? "Minnesota" : "No region")
@@ -564,6 +565,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+
+              <BiometricLockSetting />
             </TabsContent>
 
             {/* Notification Settings */}

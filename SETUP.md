@@ -122,6 +122,29 @@ Then rebuild the web app and the Android app one more time (this flag is
 read at build time). The next time someone opens the app and grants the
 notification permission, their device registers itself automatically.
 
+## Fingerprint / Face Unlock (Android app)
+
+Lets someone lock the app behind their phone's fingerprint or face
+authentication, on top of the normal Supabase login - opt-in, per device,
+found under Settings in any portal ("Unlock with fingerprint"). Nothing to
+configure server-side; it's purely native/Android.
+
+\`\`\`bash
+npm install
+npx cap sync android
+\`\`\`
+Then rebuild in Android Studio as usual. The permission it needs
+(`USE_BIOMETRIC`) is already declared in `AndroidManifest.xml`.
+
+One thing worth knowing: sessions on the Android app now live in Android's
+own Preferences storage instead of the WebView's `localStorage` (more
+durable - see the code comment in `lib/supabase/client.ts` for why). That's
+a one-time change in *where* the session is kept, not a new feature by
+itself, but it means anyone already logged in on the Android app will be
+asked to log in again once after this update, since their old session
+token is sitting in the old storage location. After that one re-login,
+sessions should survive app restarts more reliably than before.
+
 ## Production Deployment
 
 When deploying to Vercel:

@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
 import { AppLoadingOverlay } from "@/components/app-loading-overlay"
+import { AppLockGate } from "@/components/app-lock-gate"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -24,7 +25,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans antialiased`}>
         <AppLoadingOverlay />
-        {children}
+        <AppLockGate>{children}</AppLockGate>
         <Toaster />
         <Analytics />
       </body>

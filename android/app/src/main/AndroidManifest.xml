@@ -74,4 +74,11 @@
          lib/use-push-registration.ts). Silently ignored on older Android
          versions, which never required this permission. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Lets the app prompt for a fingerprint/face scan (the "Unlock with
+         fingerprint" setting, backed by @aparajita/capacitor-biometric-auth).
+         The plugin's own manifest normally brings this in via Gradle's
+         manifest merger, but it's declared here too so it's not silently
+         missing if that merge ever doesn't happen. Harmless if redundant. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 </manifest>
