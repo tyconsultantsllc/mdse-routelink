@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Truck, Mail, Lock } from 'lucide-react'
+import { Truck, Mail, Lock, Fingerprint } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,14 +10,17 @@ import { Card } from "@/components/ui/card"
 import Link from "next/link"
 import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
-import { getUserRole } from "@/app/auth/actions"
+import { finishLogin } from "@/lib/finish-login"
+import { useBiometricSignIn } from "@/lib/use-biometric-signin"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false)
   const router = useRouter()
+  const biometricSignIn = useBiometricSignIn()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,40 +47,38 @@ export default function LoginPage() {
         return
       }
 
-      const result = await getUserRole(authData.user.id)
+      const result = await finishLogin(authData.user.id)
 
-      if (result.error) {
+      if (!result.ok) {
         setError(result.error)
         setIsLoading(false)
         return
       }
 
-      if (!result.data) {
-        setError("User account not found. Please contact your administrator to set up your account.")
-        setIsLoading(false)
-        return
-      }
+      router.push(result.redirectPath)
 
-      const userRecord = result.data
-
-      localStorage.setItem("userRole", userRecord.role)
-      localStorage.setItem("userEmail", userRecord.email)
-      localStorage.setItem("userName", `${userRecord.first_name} ${userRecord.last_name}`)
-      
-      const rolePaths: Record<string, string> = {
-        admin: "/admin",
-        driver: "/driver",
-        pharmacy: "/pharmacy",
-      }
-
-      const redirectPath = rolePaths[userRecord.role] || "/admin"
-      router.push(redirectPath)
-      
     } catch (err) {
       console.error("Login error:", err)
       setError("An unexpected error occurred. Please try again.")
       setIsLoading(false)
     }
+  }
+
+  const handleBiometricSignIn = async () => {
+    setError("")
+    setIsBiometricLoading(true)
+
+    const result = await biometricSignIn.signIn()
+
+    if (!result.ok) {
+      if (!result.silent && result.error) {
+        setError(result.error)
+      }
+      setIsBiometricLoading(false)
+      return
+    }
+
+    router.push(result.redirectPath)
   }
 
   return (
@@ -144,10 +145,38 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+            <Button type="submit" className="w-full" size="lg" disabled={isLoading || isBiometricLoading}>
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+
+          {/* Only shown once we know there's a stored sign-in this can
+              actually use - a deliberate tap-to-trigger button, never an
+              automatic prompt on page load. */}
+          {biometricSignIn.checked && biometricSignIn.available && (
+            <>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                size="lg"
+                disabled={isLoading || isBiometricLoading}
+                onClick={handleBiometricSignIn}
+              >
+                <Fingerprint className="mr-2 h-4 w-4" />
+                {isBiometricLoading ? "Signing in..." : "Sign in with fingerprint"}
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Footer */}

@@ -4,8 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { Capacitor } from "@capacitor/core"
 import { createClient } from "@/lib/supabase/client"
-
-const ENABLED_KEY = "app_lock_biometric_enabled"
+import { BIOMETRIC_ENABLED_KEY, saveRefreshToken, clearStoredRefreshToken } from "@/lib/biometric-store"
 
 // Routes middleware.ts already treats as not requiring a logged-in user
 // (see the matching check there). The lock screen has no business
@@ -58,6 +57,15 @@ type AppLockState = {
  * appear there, rather than prompting for a fingerprint scan that then
  * reveals a login form anyway.
  *
+ * This hook also doubles as the one place that keeps a Supabase refresh
+ * token mirrored into native storage (lib/biometric-store.ts) while the
+ * person is opted in, via a single onAuthStateChange listener: saved on
+ * SIGNED_IN/TOKEN_REFRESHED, cleared on SIGNED_OUT. That's what lets the
+ * login page's separate "sign in with fingerprint" flow
+ * (lib/use-biometric-signin.ts) bridge a genuinely expired session later,
+ * without ever storing the person's actual password - see
+ * lib/biometric-store.ts for the reasoning behind that trade-off.
+ *
  * A no-op everywhere outside the native Android app: `isNative` stays
  * false, `locked` stays false, and nothing here ever touches the plain
  * website.
@@ -71,8 +79,13 @@ export function useAppLock() {
     locked: false,
   })
   const listenerRef = useRef<{ remove: () => void } | null>(null)
+  const authListenerRef = useRef<{ unsubscribe: () => void } | null>(null)
   const pathname = usePathname()
   const pathnameRef = useRef(pathname)
+  // Mirrors state.enabled for the onAuthStateChange callback below, which
+  // is registered once on mount and would otherwise only ever see the
+  // `enabled` value that was current at that moment.
+  const enabledRef = useRef(false)
 
   useEffect(() => {
     pathnameRef.current = pathname
@@ -95,7 +108,7 @@ export function useAppLock() {
 
       const [biometryResult, stored, session] = await Promise.all([
         BiometricAuth.checkBiometry().catch(() => ({ isAvailable: false })),
-        Preferences.get({ key: ENABLED_KEY }),
+        Preferences.get({ key: BIOMETRIC_ENABLED_KEY }),
         createClient()
           .auth.getSession()
           .then(({ data }) => data.session),
@@ -105,6 +118,7 @@ export function useAppLock() {
 
       const isAvailable = !!biometryResult.isAvailable
       const enabled = stored.value === "true" && isAvailable
+      enabledRef.current = enabled
 
       setState({
         checked: true,
@@ -125,7 +139,7 @@ export function useAppLock() {
         // either could have changed since mount) before deciding to
         // re-lock on the next resume.
         Promise.all([
-          Preferences.get({ key: ENABLED_KEY }),
+          Preferences.get({ key: BIOMETRIC_ENABLED_KEY }),
           createClient()
             .auth.getSession()
             .then(({ data }) => data.session),
@@ -136,18 +150,61 @@ export function useAppLock() {
         })
       })
       listenerRef.current = listener
+
+      // Keep the stored refresh token in sync with whatever Supabase
+      // itself decides the session is. Only saves one while the person has
+      // opted in (enabledRef - checked fresh each time, not captured at
+      // mount), and always clears it on sign-out so a signed-out device
+      // can never use a leftover token to quietly resume someone else's
+      // session.
+      const {
+        data: { subscription },
+      } = createClient().auth.onAuthStateChange((event, changedSession) => {
+        if (cancelled) return
+        if (event === "SIGNED_OUT") {
+          clearStoredRefreshToken().catch(() => {})
+          return
+        }
+        if (
+          (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
+          enabledRef.current &&
+          changedSession?.refresh_token
+        ) {
+          saveRefreshToken(changedSession.refresh_token).catch(() => {})
+        }
+      })
+      authListenerRef.current = subscription
     })()
 
     return () => {
       cancelled = true
       listenerRef.current?.remove()
+      authListenerRef.current?.unsubscribe()
     }
   }, [])
 
   const setEnabled = useCallback(async (value: boolean) => {
     const { Preferences } = await import("@capacitor/preferences")
-    await Preferences.set({ key: ENABLED_KEY, value: value ? "true" : "false" })
+    await Preferences.set({ key: BIOMETRIC_ENABLED_KEY, value: value ? "true" : "false" })
+    enabledRef.current = value
     setState((s) => ({ ...s, enabled: value }))
+
+    if (!value) {
+      // Turning the setting off should also drop any already-stored
+      // refresh token - otherwise it wouldn't actually stop biometric
+      // sign-in from working on the login page, just hide the app-lock
+      // toggle.
+      await clearStoredRefreshToken().catch(() => {})
+    } else {
+      // Turning it on: capture whatever session already exists right now,
+      // so there's something for "sign in with fingerprint" to use
+      // immediately rather than waiting for the next sign-in/token-refresh
+      // event.
+      const { data } = await createClient().auth.getSession()
+      if (data.session?.refresh_token) {
+        await saveRefreshToken(data.session.refresh_token).catch(() => {})
+      }
+    }
   }, [])
 
   const unlock = useCallback(async (): Promise<boolean> => {
