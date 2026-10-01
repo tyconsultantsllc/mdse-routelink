@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { AdminHeader } from "@/components/admin-header"
 import { AdminSidebar } from "@/components/admin-sidebar"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AddUserModal } from "@/components/add-user-modal"
 import { EditUserModal } from "@/components/edit-user-modal"
 import { RegionBadge } from "@/components/region-badge"
@@ -24,11 +26,21 @@ export default function UsersPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     fetchUsers()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchUsers()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     filterUsers()
@@ -106,8 +118,10 @@ export default function UsersPage() {
     <div className="flex h-screen bg-background">
       <AdminSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AdminHeader title="Users" />
-        <main className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Users">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} as="main" className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -216,7 +230,7 @@ export default function UsersPage() {
               </Table>
             </div>
           </div>
-        </main>
+        </PullToRefresh>
       </div>
 
       <AddUserModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={fetchUsers} />

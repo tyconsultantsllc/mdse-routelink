@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AddRouteModal } from "@/components/add-route-modal"
 import { EditRouteModal } from "@/components/edit-route-modal"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -50,10 +52,20 @@ export default function RouteManagement() {
   const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [mapDrawSummary, setMapDrawSummary] = useState<{ routesDrawn: number; totalRoutes: number } | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchRoutes()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchRoutes()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchRoutes = async () => {
     try {
@@ -248,9 +260,11 @@ export default function RouteManagement() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <AdminHeader title="Route Management" />
+          <AdminHeader title="Route Management">
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+          </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-xl font-bold text-foreground">Delivery Routes</h2>
@@ -522,10 +536,10 @@ export default function RouteManagement() {
                 </table>
               )}
             </Card>
-          </div>
+          </PullToRefresh>
         </div>
 
-        <AddRouteModal 
+        <AddRouteModal
           open={isModalOpen} 
           onOpenChange={setIsModalOpen}
           onSuccess={fetchRoutes}

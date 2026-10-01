@@ -9,17 +9,29 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 
 export default function PharmacyDeliveryHistoryPage() {
   const [stops, setStops] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [signatureLoading, setSignatureLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     fetchHistory()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchHistory()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchHistory = async () => {
     try {
@@ -81,14 +93,15 @@ export default function PharmacyDeliveryHistoryPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div>
+          <div className="flex-1">
             <h1 className="text-lg md:text-2xl font-bold">Delivery History</h1>
             <p className="text-xs md:text-sm text-muted-foreground">Full record of past deliveries</p>
           </div>
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
         </div>
       </header>
 
-      <div className="p-3 md:p-6">
+      <PullToRefresh onRefresh={handleRefresh} scrollSource="window" className="p-3 md:p-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base md:text-lg">All Deliveries</CardTitle>
@@ -154,7 +167,7 @@ export default function PharmacyDeliveryHistoryPage() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PullToRefresh>
 
       <Dialog open={!!signatureUrl} onOpenChange={(open) => !open && setSignatureUrl(null)}>
         <DialogContent>

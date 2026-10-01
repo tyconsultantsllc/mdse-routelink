@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import {
   ChartContainer,
   ChartTooltip,
@@ -36,10 +38,20 @@ export default function Reports() {
   const { toast } = useToast()
 
   const [gracePeriod, setGracePeriod] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchStats()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchStats()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchStats = async () => {
     try {
@@ -228,9 +240,10 @@ export default function Reports() {
               </TooltipTrigger>
               <TooltipContent>Export report as PDF or CSV</TooltipContent>
             </Tooltip>
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
           </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-4 md:p-6">
             {loading ? (
               <Card className="p-12 text-center">
                 <p className="text-muted-foreground">Loading report data...</p>
@@ -424,7 +437,7 @@ export default function Reports() {
                 </div>
               </>
             )}
-          </div>
+          </PullToRefresh>
         </div>
       </div>
 

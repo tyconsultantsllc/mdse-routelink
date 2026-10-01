@@ -33,6 +33,8 @@ import {
 import { NotificationCenter } from "@/components/notification-center"
 import { useNotifications } from "@/lib/use-notifications"
 import { usePushRegistration } from "@/lib/use-push-registration"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 
 const DriverMap = dynamic(() => import("@/components/driver-map"), {
   ssr: false,
@@ -100,6 +102,7 @@ export default function DriverTrackingPage() {
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const [deliveryDetailsOpen, setDeliveryDetailsOpen] = useState(false)
   const [deliveryDetails, setDeliveryDetails] = useState<any>(null)
+  const [manualRefreshing, setManualRefreshing] = useState(false)
   const { notifications, markAsRead, markAllAsRead, dismiss } = useNotifications()
   usePushRegistration(driverId)
   const syncingRef = useRef(false)
@@ -276,6 +279,15 @@ export default function DriverTrackingPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleManualRefresh = async () => {
+    setManualRefreshing(true)
+    try {
+      await fetchDriverRoutes()
+    } finally {
+      setManualRefreshing(false)
     }
   }
 
@@ -833,6 +845,7 @@ export default function DriverTrackingPage() {
                 onMarkAllAsRead={markAllAsRead}
                 onDismiss={dismiss}
               />
+              <RefreshButton onRefresh={handleManualRefresh} refreshing={manualRefreshing} />
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -903,6 +916,7 @@ export default function DriverTrackingPage() {
         </div>
       </nav>
 
+      <PullToRefresh onRefresh={handleManualRefresh} scrollSource="window">
       <AnnouncementBanner />
 
       {!isOnline && (
@@ -1289,6 +1303,7 @@ export default function DriverTrackingPage() {
           </p>
         </div>
       </footer>
+      </PullToRefresh>
 
       <DeliveryConfirmationModal
         open={confirmationModalOpen}

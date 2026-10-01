@@ -2,6 +2,8 @@
 
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -59,11 +61,21 @@ export default function CalendarView() {
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"month" | "week">("month")
   const [viewingSeriesId, setViewingSeriesId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     fetchRoutes()
   }, [currentDate])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchRoutes()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchRoutes = async () => {
     try {
@@ -214,9 +226,11 @@ export default function CalendarView() {
       <AdminSidebar />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
-        <AdminHeader title="Route Calendar" />
+        <AdminHeader title="Route Calendar">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Calendar Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -495,7 +509,7 @@ export default function CalendarView() {
           )}
             </>
           )}
-        </div>
+        </PullToRefresh>
       </div>
 
       <AddRouteModal

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { useToast } from "@/hooks/use-toast"
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof AlertCircle; color: string }> = {
@@ -18,6 +20,7 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof AlertCircle; col
 export default function PharmacyReportsPage() {
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -25,6 +28,15 @@ export default function PharmacyReportsPage() {
     const interval = setInterval(fetchReports, 15000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchReports()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchReports = async () => {
     try {
@@ -69,8 +81,10 @@ export default function PharmacyReportsPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <AdminHeader title="Pharmacy Reports" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Pharmacy Reports">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
           <div className="mb-6">
             <h2 className="text-xl font-bold text-foreground">
               Pharmacy Reports {openCount > 0 && <span className="text-destructive">({openCount} open)</span>}
@@ -126,7 +140,7 @@ export default function PharmacyReportsPage() {
               })}
             </div>
           )}
-        </div>
+        </PullToRefresh>
       </div>
     </div>
   )

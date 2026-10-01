@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { ChatPanel } from "@/components/chat-panel"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -35,11 +37,21 @@ export default function MessagesPage() {
   const [allDrivers, setAllDrivers] = useState<{ id: string; first_name: string; last_name: string }[]>([])
   const [selectedNewDriverId, setSelectedNewDriverId] = useState("")
   const [isStartingConversation, setIsStartingConversation] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     init()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchConversations()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const init = async () => {
     const supabase = createClient()
@@ -149,8 +161,10 @@ export default function MessagesPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <AdminHeader title="Messages" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Messages">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
           <div className="flex justify-end gap-2 mb-4">
             <Button onClick={() => setIsNewMessageOpen(true)}>
               <MessageSquarePlus className="mr-2 h-4 w-4" />
@@ -226,7 +240,7 @@ export default function MessagesPage() {
               )}
             </Card>
           </div>
-        </div>
+        </PullToRefresh>
       </div>
 
       <Dialog open={isBroadcastOpen} onOpenChange={setIsBroadcastOpen}>

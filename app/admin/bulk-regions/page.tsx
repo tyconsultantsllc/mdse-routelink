@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { getPharmacies, getUsers } from "@/app/actions/data-actions"
@@ -37,6 +39,7 @@ export default function BulkRegionAssignPage() {
   // dropdown plus one click could reassign dozens of pharmacies/drivers at
   // once. Now it opens a preview of the exact changes first.
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -106,6 +109,21 @@ export default function BulkRegionAssignPage() {
     }
   }
 
+  const handleRefresh = async () => {
+    // Refetching resets pharmacyRegions/driverRegions from the database,
+    // which would silently throw away any dropdown changes not yet saved -
+    // the same reason a "Save All" here needs a confirmation first.
+    if (pendingChangeCount > 0 && !confirm("Refreshing will discard your unsaved region changes. Continue?")) {
+      return
+    }
+    setRefreshing(true)
+    try {
+      await fetchData()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const RegionSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-[200px]">
@@ -123,8 +141,10 @@ export default function BulkRegionAssignPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <AdminHeader title="Bulk Region Assignment" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Bulk Region Assignment">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-foreground">Bulk Region Assignment</h2>
@@ -200,7 +220,7 @@ export default function BulkRegionAssignPage() {
               </Card>
             </div>
           )}
-        </div>
+        </PullToRefresh>
       </div>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

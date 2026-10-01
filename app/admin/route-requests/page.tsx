@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AssignRouteRequestModal } from "@/components/assign-route-request-modal"
 import { useToast } from "@/hooks/use-toast"
 import { RegionBadge } from "@/components/region-badge"
@@ -15,6 +17,7 @@ export default function RouteRequestsPage() {
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [assigning, setAssigning] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -22,6 +25,15 @@ export default function RouteRequestsPage() {
     const interval = setInterval(fetchRequests, 15000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchRequests()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchRequests = async () => {
     try {
@@ -56,8 +68,10 @@ export default function RouteRequestsPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <AdminHeader title="Route Requests" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Route Requests">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
           <div className="mb-6">
             <h2 className="text-xl font-bold text-foreground">
               Route Requests {emergencyCount > 0 && <span className="text-destructive">({emergencyCount} emergency)</span>}
@@ -165,7 +179,7 @@ export default function RouteRequestsPage() {
               })}
             </div>
           )}
-        </div>
+        </PullToRefresh>
       </div>
 
       <AssignRouteRequestModal

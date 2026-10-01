@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
@@ -58,6 +60,7 @@ export default function AdminDashboard() {
   const [completedRoutesCount, setCompletedRoutesCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [unassignedRoutes, setUnassignedRoutes] = useState<Route[]>([])
+  const [refreshing, setRefreshing] = useState(false)
   // Which urgent-and-unassigned route ids we've already toasted about, so the
   // 15s poll doesn't re-fire the same "urgent" alert forever - only a route
   // that's newly urgent-and-unassigned since the last check gets a toast.
@@ -244,6 +247,15 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchDashboardData()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   useEffect(() => {
     const urgentRoutes = unassignedRoutes.filter((r) => r.priority === "urgent")
     const newlyUrgent = urgentRoutes.filter((r) => !notifiedUrgentRouteIds.current.has(r.id))
@@ -286,9 +298,11 @@ export default function AdminDashboard() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
-          <AdminHeader title="Admin Dashboard" />
+          <AdminHeader title="Admin Dashboard">
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+          </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-3 md:p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-3 md:p-6">
             {/* Unassigned Routes Alert Banner */}
             {unassignedRoutes.length > 0 && (
               <Card className="p-3 md:p-4 mb-4 md:mb-6 bg-orange-50 border-orange-200">
@@ -453,7 +467,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
             </Card>
-          </div>
+          </PullToRefresh>
         </div>
       </div>
 

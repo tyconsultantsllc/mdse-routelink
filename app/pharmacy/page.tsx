@@ -22,6 +22,8 @@ import { createClient } from "@/lib/supabase/client"
 import { NotificationCenter } from "@/components/notification-center"
 import { useNotifications } from "@/lib/use-notifications"
 import { usePushRegistration } from "@/lib/use-push-registration"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 
 // Dynamic import for pharmacy map component
 const PharmacyMap = dynamic(() => import("@/components/pharmacy-map"), {
@@ -46,6 +48,7 @@ export default function PharmacyDashboard() {
   const [requestRouteOpen, setRequestRouteOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const [myReports, setMyReports] = useState<any[]>([])
+  const [refreshing, setRefreshing] = useState(false)
   const { notifications, markAsRead, markAllAsRead, dismiss } = useNotifications()
   usePushRegistration(userId || null)
 
@@ -204,6 +207,15 @@ export default function PharmacyDashboard() {
     }
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchPharmacyDeliveries()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const handleLogout = async () => {
     try {
       const supabase = createClient()
@@ -332,6 +344,7 @@ export default function PharmacyDashboard() {
                 onMarkAllAsRead={markAllAsRead}
                 onDismiss={dismiss}
               />
+              <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -375,6 +388,7 @@ export default function PharmacyDashboard() {
           </div>
         </header>
 
+        <PullToRefresh onRefresh={handleRefresh} scrollSource="window">
         <AnnouncementBanner />
 
         <div className="p-3 md:p-6 space-y-4 md:space-y-6">
@@ -649,6 +663,7 @@ export default function PharmacyDashboard() {
             </CardContent>
           </Card>
         </div>
+        </PullToRefresh>
       </div>
       {pharmacyId && userId && (
         <PharmacyReportModal

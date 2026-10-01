@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AddPharmacyModal } from "@/components/add-pharmacy-modal"
 import { EditPharmacyModal } from "@/components/edit-pharmacy-modal"
 import { PharmacyManageUsersModal } from "@/components/pharmacy-manage-users-modal"
@@ -23,10 +25,20 @@ export default function PharmacyManagement() {
   const [pharmacies, setPharmacies] = useState<any[]>([])
   const [selectedRegion, setSelectedRegion] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchPharmacies()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchPharmacies()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchPharmacies = async () => {
     try {
@@ -99,9 +111,11 @@ export default function PharmacyManagement() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <AdminHeader title="Pharmacy Management" />
+          <AdminHeader title="Pharmacy Management">
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+          </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-foreground">Registered Pharmacies</h2>
               <div className="flex items-center gap-3">
@@ -218,7 +232,7 @@ export default function PharmacyManagement() {
                 </table>
               </Card>
             )}
-          </div>
+          </PullToRefresh>
         </div>
 
         <AddPharmacyModal open={isModalOpen} onOpenChange={setIsModalOpen} onSuccess={handlePharmacyAdded} />

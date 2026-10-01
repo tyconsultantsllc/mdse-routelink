@@ -2,6 +2,8 @@
 
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -38,11 +40,21 @@ export default function PerformanceDashboard() {
   const [allRoutes, setAllRoutes] = useState<any[]>([])
   const [gracePeriodMinutes, setGracePeriodMinutes] = useState(DEFAULT_ON_TIME_GRACE_PERIOD_MINUTES)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     fetchPerformanceData()
   }, [timeRange])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchPerformanceData()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchPerformanceData = async () => {
     try {
@@ -155,9 +167,11 @@ export default function PerformanceDashboard() {
       <AdminSidebar />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
-        <AdminHeader title="Driver Performance" />
+        <AdminHeader title="Driver Performance">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Time Range Selector */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">Performance Metrics</h2>
@@ -449,7 +463,7 @@ export default function PerformanceDashboard() {
               </Tabs>
             </>
           )}
-        </div>
+        </PullToRefresh>
       </div>
     </div>
   )

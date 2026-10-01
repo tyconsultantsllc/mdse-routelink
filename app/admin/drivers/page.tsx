@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AddUserModal } from "@/components/add-user-modal"
 import { EditUserModal } from "@/components/edit-user-modal"
 import { DriverLocationModal } from "@/components/driver-location-modal"
@@ -25,6 +27,7 @@ export default function DriverManagement() {
   const [drivers, setDrivers] = useState<any[]>([])
   const [selectedRegion, setSelectedRegion] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchDrivers()
@@ -32,6 +35,15 @@ export default function DriverManagement() {
     const interval = setInterval(fetchDrivers, 15000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchDrivers()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchDrivers = async () => {
     try {
@@ -80,9 +92,11 @@ export default function DriverManagement() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <AdminHeader title="Driver Management" />
+          <AdminHeader title="Driver Management">
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+          </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-foreground">Registered Drivers</h2>
               <div className="flex items-center gap-3">
@@ -205,7 +219,7 @@ export default function DriverManagement() {
                 </table>
               </Card>
             )}
-          </div>
+          </PullToRefresh>
         </div>
 
         <AddUserModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={fetchDrivers} />

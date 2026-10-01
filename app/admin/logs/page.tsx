@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { AdvancedFilterPanel } from "@/components/advanced-filter-panel"
 import { DeliveryDetailsModal } from "@/components/delivery-details-modal"
 import { createClient } from "@/lib/supabase/client"
@@ -33,10 +35,20 @@ export default function DeliveryLogs() {
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDelivery, setSelectedDelivery] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     fetchDeliveryLogs()
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchDeliveryLogs()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const fetchDeliveryLogs = async () => {
     try {
@@ -152,9 +164,11 @@ export default function DeliveryLogs() {
         <AdminSidebar />
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden pt-16 md:pt-0">
-          <AdminHeader title="Delivery Logs" />
+          <AdminHeader title="Delivery Logs">
+            <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+          </AdminHeader>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-4 md:p-6">
             <ScanMismatchesCard />
             {/* Search and Filters */}
             <Card className="p-6 mb-6">
@@ -401,7 +415,7 @@ export default function DeliveryLogs() {
                 </div>
               </div>
             </Card>
-          </div>
+          </PullToRefresh>
         </div>
       </div>
       <DeliveryDetailsModal

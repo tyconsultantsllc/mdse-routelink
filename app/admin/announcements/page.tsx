@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { AdminHeader } from "@/components/admin-header"
 import { AnnouncementModal } from "@/components/announcement-modal"
+import { PullToRefresh } from "@/components/pull-to-refresh"
+import { RefreshButton } from "@/components/refresh-button"
 import { useToast } from "@/hooks/use-toast"
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -29,6 +31,7 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAnnouncement, setEditingAnnouncement] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -48,6 +51,15 @@ export default function AnnouncementsPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchAnnouncements()
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -86,8 +98,10 @@ export default function AnnouncementsPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <AdminSidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <AdminHeader title="Announcements" />
-        <div className="flex-1 overflow-y-auto p-6">
+        <AdminHeader title="Announcements">
+          <RefreshButton onRefresh={handleRefresh} refreshing={refreshing} />
+        </AdminHeader>
+        <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-y-auto p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-foreground">Manage Announcements</h2>
             <Button
@@ -142,7 +156,7 @@ export default function AnnouncementsPage() {
               ))}
             </div>
           )}
-        </div>
+        </PullToRefresh>
       </div>
 
       <AnnouncementModal
