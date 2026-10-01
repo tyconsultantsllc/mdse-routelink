@@ -45,24 +45,16 @@ export function AddressAutocompleteInput({
     }
 
     setIsLoading(true)
-    
+
     try {
-      // Using Nominatim (OpenStreetMap) geocoding API - free and no API key required
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=us&limit=5&addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'MDSE-RouteLink/1.0'
-          }
-        }
-      )
-      
-      if (response.ok) {
-        const data = await response.json()
-        const addresses = data.map((item: any) => item.display_name)
-        setSuggestions(addresses)
-        setShowSuggestions(true)
-      }
+      // Runs server-side now (see app/actions/geocode-actions.ts) - a
+      // browser silently drops a custom User-Agent header on a client-side
+      // fetch, so calling Nominatim directly from here never actually
+      // identified this app the way its usage policy requires.
+      const { searchAddressSuggestionsAction } = await import("@/app/actions/geocode-actions")
+      const addresses = await searchAddressSuggestionsAction(query)
+      setSuggestions(addresses)
+      setShowSuggestions(true)
     } catch (error) {
       console.error("[v0] Address search error:", error)
     } finally {
