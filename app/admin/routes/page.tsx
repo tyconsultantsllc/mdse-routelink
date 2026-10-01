@@ -342,6 +342,7 @@ export default function RouteManagement() {
                   </p>
                 </Card>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-border">
                   <thead className="bg-muted">
                     <tr>
@@ -534,6 +535,7 @@ export default function RouteManagement() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </Card>
           </PullToRefresh>

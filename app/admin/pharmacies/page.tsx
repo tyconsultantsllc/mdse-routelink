@@ -137,6 +137,7 @@ export default function PharmacyManagement() {
               </Card>
             ) : (
               <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-border">
                   <thead className="bg-muted">
                     <tr>
@@ -230,6 +231,7 @@ export default function PharmacyManagement() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </Card>
             )}
           </PullToRefresh>

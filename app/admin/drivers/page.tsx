@@ -118,6 +118,7 @@ export default function DriverManagement() {
               </Card>
             ) : (
               <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-border">
                   <thead className="bg-muted">
                     <tr>
@@ -217,6 +218,7 @@ export default function DriverManagement() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </Card>
             )}
           </PullToRefresh>
