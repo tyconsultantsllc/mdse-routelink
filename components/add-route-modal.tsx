@@ -27,7 +27,7 @@ import { RouteOptimizerDialog } from "@/components/route-optimizer-dialog"
 import { AddressAutocompleteInput } from "@/components/address-autocomplete-input"
 import { TimeSelect } from "@/components/time-select"
 import { geocodeAddress } from "@/lib/geocode"
-import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
+import { REGION_FALLBACK_COORDS, getDriverDetails, type Region } from "@/lib/region-utils"
 import { parseBingMapsLink, parseGoogleMapsLink, parseManualAddressList } from "@/lib/route-link-parser"
 
 interface AddRouteModalProps {
@@ -126,7 +126,11 @@ export function AddRouteModal({ open, onOpenChange, onSuccess, initialDate, copy
       const users = await getUsers()
       setDrivers(
         users
-          .filter((u: any) => u.role === 'driver')
+          // A deactivated driver (see app/admin/users) shouldn't be
+          // assignable to a new route - `drivers.active` defaults to true,
+          // so a driver record from before this column existed still
+          // counts as active rather than disappearing from this list.
+          .filter((u: any) => u.role === 'driver' && getDriverDetails(u)?.active !== false)
           .map((u: any) => ({ id: u.id, name: `${u.first_name || ''} ${u.last_name || ''}`.trim() })),
       )
     } catch (error) {

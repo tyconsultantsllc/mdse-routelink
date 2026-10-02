@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Edit, Trash2, UserPlus } from 'lucide-react'
+import { Search, Edit, Trash2, UserPlus, UserX, UserCheck } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -105,6 +105,44 @@ export default function UsersPage() {
     }
   }
 
+  const [togglingDriverId, setTogglingDriverId] = useState<string | null>(null)
+
+  /**
+   * Deactivating keeps the account and its delivery history (unlike Delete,
+   * which erases both - see the big comment on deleteUser in
+   * app/actions/data-actions.ts). deactivateDriver() refuses when the
+   * driver still has an active route, so that error is shown as-is rather
+   * than a generic failure message - it tells the admin exactly what to do
+   * first (reassign or cancel the named route(s)).
+   */
+  const handleToggleDriverActive = async (user: any) => {
+    const isActive = getDriverDetails(user)?.active !== false
+    if (isActive && !confirm(`Deactivate ${user.first_name} ${user.last_name}? They won't be able to sign in or be assigned new routes until reactivated.`)) {
+      return
+    }
+
+    setTogglingDriverId(user.id)
+    try {
+      const { deactivateDriver, reactivateDriver } = await import("@/app/actions/data-actions")
+      if (isActive) {
+        await deactivateDriver(user.id)
+        toast({ title: "Driver deactivated", description: `${user.first_name} ${user.last_name} can no longer sign in or be assigned routes.` })
+      } else {
+        await reactivateDriver(user.id)
+        toast({ title: "Driver reactivated", description: `${user.first_name} ${user.last_name} can sign in and be assigned routes again.` })
+      }
+      fetchUsers()
+    } catch (error: any) {
+      toast({
+        title: isActive ? "Could not deactivate driver" : "Could not reactivate driver",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setTogglingDriverId(null)
+    }
+  }
+
   const getRoleBadge = (role: string) => {
     const colors = {
       admin: "bg-purple-500",
@@ -203,6 +241,11 @@ export default function UsersPage() {
                               {user.role === "admin" && "Administrator"}
                             </span>
                             {user.role === "driver" && <RegionBadge region={getDriverDetails(user)?.region} />}
+                            {user.role === "driver" && getDriverDetails(user)?.active === false && (
+                              <Badge variant="outline" className="border-destructive text-destructive">
+                                Deactivated
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
@@ -218,6 +261,21 @@ export default function UsersPage() {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
+                            {user.role === "driver" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={togglingDriverId === user.id}
+                                onClick={() => handleToggleDriverActive(user)}
+                                title={getDriverDetails(user)?.active === false ? "Reactivate driver" : "Deactivate driver"}
+                              >
+                                {getDriverDetails(user)?.active === false ? (
+                                  <UserCheck className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <UserX className="h-4 w-4 text-amber-600" />
+                                )}
+                              </Button>
+                            )}
                             <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(user.id)}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>

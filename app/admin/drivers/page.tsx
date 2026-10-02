@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit, MapIcon, Trash2 } from "lucide-react"
+import { Plus, Edit, MapIcon, Trash2, UserX, UserCheck } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -83,6 +84,42 @@ export default function DriverManagement() {
     }
   }
 
+  const [togglingDriverId, setTogglingDriverId] = useState<string | null>(null)
+
+  /**
+   * Deactivating keeps the account and its delivery history (unlike Delete,
+   * which erases both). deactivateDriver() refuses when the driver still
+   * has an active route, so that message is shown as-is rather than a
+   * generic failure - it names exactly what to reassign or cancel first.
+   */
+  const handleToggleDriverActive = async (driver: any, driverName: string) => {
+    const isActive = getDriverDetails(driver)?.active !== false
+    if (isActive && !confirm(`Deactivate ${driverName}? They won't be able to sign in or be assigned new routes until reactivated.`)) {
+      return
+    }
+
+    setTogglingDriverId(driver.id)
+    try {
+      const { deactivateDriver, reactivateDriver } = await import("@/app/actions/data-actions")
+      if (isActive) {
+        await deactivateDriver(driver.id)
+        toast({ title: "Driver deactivated", description: `${driverName} can no longer sign in or be assigned routes.` })
+      } else {
+        await reactivateDriver(driver.id)
+        toast({ title: "Driver reactivated", description: `${driverName} can sign in and be assigned routes again.` })
+      }
+      fetchDrivers()
+    } catch (error: any) {
+      toast({
+        title: isActive ? "Could not deactivate driver" : "Could not reactivate driver",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setTogglingDriverId(null)
+    }
+  }
+
   const filteredDrivers =
     selectedRegion === "all" ? drivers : drivers.filter((d) => getDriverDetails(d)?.region === selectedRegion)
 
@@ -158,7 +195,14 @@ export default function DriverManagement() {
                                 </AvatarFallback>
                               </Avatar>
                               <div className="ml-4">
-                                <div className="text-sm font-medium text-foreground">{driverName}</div>
+                                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                                  {driverName}
+                                  {driverDetails?.active === false && (
+                                    <Badge variant="outline" className="border-destructive text-destructive">
+                                      Deactivated
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-sm text-muted-foreground">Driver</div>
                               </div>
                             </div>
@@ -203,6 +247,24 @@ export default function DriverManagement() {
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>View on map</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="mr-2"
+                                  disabled={togglingDriverId === driver.id}
+                                  onClick={() => handleToggleDriverActive(driver, driverName)}
+                                >
+                                  {driverDetails?.active === false ? (
+                                    <UserCheck className="h-4 w-4 text-green-600" />
+                                  ) : (
+                                    <UserX className="h-4 w-4 text-amber-600" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{driverDetails?.active === false ? "Reactivate driver" : "Deactivate driver"}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>

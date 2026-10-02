@@ -1,4 +1,5 @@
 import { getUserRole } from "@/app/auth/actions"
+import { createClient } from "@/lib/supabase/client"
 
 const ROLE_PATHS: Record<string, string> = {
   admin: "/admin",
@@ -22,6 +23,13 @@ export async function finishLogin(userId: string): Promise<FinishLoginResult> {
   const result = await getUserRole(userId)
 
   if (result.error) {
+    // signInWithPassword() has already set a valid session cookie by the
+    // time this runs (see the big comment above) - without this, a
+    // deactivated driver would get bounced back to the login page with an
+    // error message, but would still be sitting on a perfectly valid signed
+    // -in session underneath it, which a manual visit to /driver would
+    // happily honor since nothing else re-checks this after login.
+    await createClient().auth.signOut()
     return { ok: false, error: result.error }
   }
 

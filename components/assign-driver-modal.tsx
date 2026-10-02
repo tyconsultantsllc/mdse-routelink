@@ -59,7 +59,12 @@ export function AssignDriverModal({ open, onOpenChange, routeName, routeId, curr
       const { getUsers, getRoutes } = await import("@/app/actions/data-actions")
       const [users, routes] = await Promise.all([getUsers(), getRoutes()])
       
-      const driverUsers = users.filter((u: any) => u.role === "driver").map((u: any) => {
+      const driverUsers = users
+        // A deactivated driver shouldn't be offered for (re)assignment -
+        // `drivers.active` defaults to true, so a driver record from
+        // before this column existed still counts as active.
+        .filter((u: any) => u.role === "driver" && getDriverDetails(u)?.active !== false)
+        .map((u: any) => {
         const activeRoutes = routes.filter(
           (r: any) => r.driver_id === u.id && (r.status === "pending" || r.status === "in-progress"),
         ).length

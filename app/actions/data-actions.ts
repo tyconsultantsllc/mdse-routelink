@@ -211,6 +211,86 @@ export async function deleteUser(userId: string) {
   if (error) throw error
 }
 
+/**
+ * Turns off a driver's account without deleting it: blocks them from
+ * signing in (see app/auth/actions.ts's getUserRole and lib/finish-login.ts)
+ * and removes them from every "pick a driver" list in the app (see
+ * getDriverDetails(...)?.active checks in the add-route/assign-driver/
+ * assign-route-request modals and getDriversForPharmacyAssignment above) -
+ * all without touching drivers.id, so their delivery_logs history (which
+ * deleteUser above permanently erases via ON DELETE CASCADE) stays intact.
+ *
+ * Refuses if the driver currently has any non-terminal route (pending or
+ * in-progress) - silently flipping `active` here would leave that route
+ * assigned to someone who can no longer log in to work it, with nothing in
+ * the UI calling that out. The admin has to reassign or cancel those routes
+ * first, through the normal route-editing flow, before the account can be
+ * deactivated.
+ */
+export async function deactivateDriver(userId: string) {
+  const { role, userId: callerId } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  if (userId === callerId) {
+    throw new Error('You cannot deactivate your own account')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: activeRoutes, error: routesError } = await supabase
+    .from('routes')
+    .select('id, name')
+    .eq('driver_id', userId)
+    .in('status', ['pending', 'in-progress'])
+
+  if (routesError) throw routesError
+
+  if (activeRoutes && activeRoutes.length > 0) {
+    const names = activeRoutes.map(r => r.name).join(', ')
+    throw new Error(
+      `This driver still has ${activeRoutes.length} active route${activeRoutes.length === 1 ? '' : 's'} (${names}). Reassign or cancel ${activeRoutes.length === 1 ? 'it' : 'them'} before deactivating this account.`,
+    )
+  }
+
+  const { data, error } = await supabase
+    .from('drivers')
+    .update({ active: false })
+    .eq('id', userId)
+    .select()
+
+  if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('Could not deactivate: no matching driver record found')
+  }
+
+  return { success: true }
+}
+
+export async function reactivateDriver(userId: string) {
+  const { role } = await verifyAuth()
+
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('drivers')
+    .update({ active: true })
+    .eq('id', userId)
+    .select()
+
+  if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('Could not reactivate: no matching driver record found')
+  }
+
+  return { success: true }
+}
+
 export async function getPharmacyUsers(pharmacyId: string) {
   const { role } = await verifyAuth()
 
@@ -2032,16 +2112,21 @@ export async function getDriversForPharmacyAssignment() {
 
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, first_name, last_name, drivers(region)')
+    .select('id, first_name, last_name, drivers(region, active)')
     .eq('role', 'driver')
 
   if (error) throw error
 
-  const allDrivers = (users || []).map((u: any) => ({
-    id: u.id,
-    name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
-    region: getDriverDetails(u)?.region || null,
-  }))
+  const allDrivers = (users || [])
+    // A deactivated driver shouldn't be offered to a pharmacy either -
+    // `active` defaults to true, so a driver record from before this
+    // column existed still counts as active.
+    .filter((u: any) => getDriverDetails(u)?.active !== false)
+    .map((u: any) => ({
+      id: u.id,
+      name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+      region: getDriverDetails(u)?.region || null,
+    }))
 
   const regionMatched = pharmacyRegion ? allDrivers.filter((d) => d.region === pharmacyRegion) : allDrivers
   return regionMatched.length > 0 ? regionMatched : allDrivers

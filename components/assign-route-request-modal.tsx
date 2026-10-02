@@ -52,7 +52,10 @@ export function AssignRouteRequestModal({ open, onOpenChange, request, onAssigne
         const { getUsers } = await import("@/app/actions/data-actions")
         const users = await getUsers()
         const pharmacyRegion = request.pharmacies?.region
-        const allDrivers = users.filter((u: any) => u.role === "driver")
+        // A deactivated driver shouldn't be offered for assignment -
+        // `drivers.active` defaults to true, so a driver record from
+        // before this column existed still counts as active.
+        const allDrivers = users.filter((u: any) => u.role === "driver" && getDriverDetails(u)?.active !== false)
         // Prefer drivers in the same region as the requesting pharmacy, but
         // don't hide everyone if the pharmacy or its drivers have no region
         // set yet - that would make the feature unusable during rollout.

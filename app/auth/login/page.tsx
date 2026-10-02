@@ -1,26 +1,50 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { Truck, Mail, Lock, Fingerprint } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
 import { finishLogin } from "@/lib/finish-login"
 import { useBiometricSignIn } from "@/lib/use-biometric-signin"
 
+// useSearchParams() (used below, to show a message when middleware.ts
+// redirects here after signing out a deactivated driver) has to be read
+// inside a Suspense boundary, or Next.js de-opts this whole page out of
+// static rendering at build time - this default export is just that
+// boundary, with the real page below it.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isBiometricLoading, setIsBiometricLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const biometricSignIn = useBiometricSignIn()
+
+  // middleware.ts signs out and redirects here with this flag when a
+  // driver's account gets deactivated while they still have a valid
+  // session elsewhere - this is the one place that explains why they were
+  // suddenly signed out.
+  useEffect(() => {
+    if (searchParams.get("deactivated") === "1") {
+      setError("This account has been deactivated. Contact your admin for assistance.")
+    }
+  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

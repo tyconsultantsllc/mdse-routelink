@@ -40,7 +40,7 @@ export async function getUserRole(userId: string) {
 
   const { data, error } = await supabaseAdmin
     .from('users')
-    .select('role, email, first_name, last_name')
+    .select('role, email, first_name, last_name, drivers(active)')
     .eq('id', userId)
     .single()
 
@@ -51,6 +51,17 @@ export async function getUserRole(userId: string) {
 
   if (!data) {
     return { error: 'User account not found in database' }
+  }
+
+  // A deactivated driver (see app/admin/users - "Deactivate" rather than
+  // delete, so their delivery history stays intact) shouldn't be able to
+  // finish signing in at all. `drivers` is a single nested object here (see
+  // lib/region-utils.ts's getDriverDetails for why), and only exists for
+  // driver accounts, so a missing/undefined `active` never blocks anyone
+  // else.
+  const driverRow = Array.isArray((data as any).drivers) ? (data as any).drivers[0] : (data as any).drivers
+  if (data.role === 'driver' && driverRow?.active === false) {
+    return { error: 'This account has been deactivated. Contact your admin for assistance.' }
   }
 
   return { data }
