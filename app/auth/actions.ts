@@ -1,8 +1,31 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 
 export async function getUserRole(userId: string) {
+  // This is a Next.js Server Action, which means it's directly callable
+  // from any client with any userId - not just from finishLogin() right
+  // after a real sign-in, the way the app's own UI calls it. Without this
+  // check, anyone (signed in or not) could call getUserRole() with any
+  // user's UUID and get back their role/email/name, no login required.
+  // The session cookie is the only thing actually trustworthy here - by the
+  // time this runs, signInWithPassword()/refreshSession() has already set
+  // it (see app/auth/login/page.tsx and lib/use-biometric-signin.ts), so
+  // this never has to loosen the check for the legitimate callers.
+  const supabase = await createServerClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return { error: 'Not signed in' }
+  }
+  if (user.id !== userId) {
+    return { error: 'Forbidden' }
+  }
+
   // Use service role key to bypass RLS policies
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

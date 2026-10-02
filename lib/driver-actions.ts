@@ -87,7 +87,7 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
       ? await uploadDeliveryPhotos(params.driverId, params.stopId, params.photos)
       : []
 
-  const { error: stopError } = await supabase
+  const { data: stopUpdateData, error: stopError } = await supabase
     .from("route_stops")
     .update({
       status: "delivered",
@@ -98,8 +98,19 @@ export async function confirmDeliveryStop(params: ConfirmDeliveryParams) {
       notes: params.notes || null,
     })
     .eq("id", params.stopId)
+    .select()
 
   if (stopError) throw new Error(`Could not save delivery confirmation: ${stopError.message}`)
+  // Supabase/RLS reports success even when zero rows actually matched (the
+  // same gap fixed in app/actions/data-actions.ts's updateUser) - without
+  // this check, a stop that RLS silently refused to update (e.g. the route
+  // was reassigned to someone else between loading the page and tapping
+  // Confirm) would look like a successful delivery confirmation to the
+  // driver, even though the signature/photos already uploaded above are now
+  // orphaned and nothing was actually recorded as delivered.
+  if (!stopUpdateData || stopUpdateData.length === 0) {
+    throw new Error("Could not save delivery confirmation: this stop no longer matches your account's permissions (it may have been reassigned).")
+  }
 
   const { error: logError } = await supabase.from("delivery_logs").insert({
     route_id: params.routeId,
@@ -137,15 +148,20 @@ export async function failDeliveryStop(params: {
 }) {
   const supabase = createClient()
 
-  const { error: stopError } = await supabase
+  const { data: stopUpdateData, error: stopError } = await supabase
     .from("route_stops")
     .update({
       status: "failed",
       notes: params.reason,
     })
     .eq("id", params.stopId)
+    .select()
 
   if (stopError) throw new Error(`Could not record failed delivery: ${stopError.message}`)
+  // See the matching check in confirmDeliveryStop above.
+  if (!stopUpdateData || stopUpdateData.length === 0) {
+    throw new Error("Could not record failed delivery: this stop no longer matches your account's permissions (it may have been reassigned).")
+  }
 
   const { error: logError } = await supabase.from("delivery_logs").insert({
     route_id: params.routeId,
@@ -247,30 +263,38 @@ export async function confirmReturnToPharmacy(params: ConfirmReturnParams) {
 export async function completeRoute(routeId: number) {
   const supabase = createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("routes")
     .update({
       status: "completed",
       actual_end_time: new Date().toISOString(),
     })
     .eq("id", routeId)
+    .select()
 
   if (error) throw new Error(`Could not complete route: ${error.message}`)
+  if (!data || data.length === 0) {
+    throw new Error("Could not complete route: this route no longer matches your account's permissions.")
+  }
 }
 
 export async function confirmRouteAssignment(routeId: number) {
   const supabase = createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("routes")
     .update({ driver_confirmation: "confirmed", confirmation_resolved_at: new Date().toISOString() })
     .eq("id", routeId)
+    .select()
 
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error("Could not confirm this route: it no longer matches your account's permissions.")
+  }
 }
 
 export async function declineRouteAssignment(routeId: number, reason: string) {
   const supabase = createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("routes")
     .update({
       driver_confirmation: "declined",
@@ -278,8 +302,12 @@ export async function declineRouteAssignment(routeId: number, reason: string) {
       confirmation_resolved_at: new Date().toISOString(),
     })
     .eq("id", routeId)
+    .select()
 
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error("Could not decline this route: it no longer matches your account's permissions.")
+  }
 }
 
 export async function updateDriverLocation(driverId: string, latitude: number, longitude: number) {
@@ -294,31 +322,43 @@ export async function updateDriverLocation(driverId: string, latitude: number, l
     })
     .eq("id", driverId)
 
+  // No matched-row check here on purpose: this fires on every location-poll
+  // tick while driving (see app/driver/page.tsx), far too often to throw a
+  // hard error over - a dropped update here just means one stale GPS point,
+  // not lost delivery data the way a silently-failed confirmation would be.
   if (error) throw new Error(`Could not save location: ${error.message}`)
 }
 
 export async function startStop(routeId: number, stopId: number, isFirstStopOnRoute: boolean) {
   const supabase = createClient()
 
-  const { error: stopError } = await supabase
+  const { data: stopUpdateData, error: stopError } = await supabase
     .from("route_stops")
     .update({
       status: "picked_up",
       actual_pickup_time: new Date().toISOString(),
     })
     .eq("id", stopId)
+    .select()
 
   if (stopError) throw new Error(`Could not start stop: ${stopError.message}`)
+  if (!stopUpdateData || stopUpdateData.length === 0) {
+    throw new Error("Could not start stop: this stop no longer matches your account's permissions (it may have been reassigned).")
+  }
 
   if (isFirstStopOnRoute) {
-    const { error: routeError } = await supabase
+    const { data: routeUpdateData, error: routeError } = await supabase
       .from("routes")
       .update({
         status: "in-progress",
         actual_start_time: new Date().toISOString(),
       })
       .eq("id", routeId)
+      .select()
 
     if (routeError) throw new Error(`Could not start route: ${routeError.message}`)
+    if (!routeUpdateData || routeUpdateData.length === 0) {
+      throw new Error("Could not start route: it no longer matches your account's permissions.")
+    }
   }
 }
