@@ -137,3 +137,79 @@ export async function notifyPharmacyDeliveryResult(
     ),
   )
 }
+
+/**
+ * Notifies a pharmacy's users that a driver has started heading their way
+ * (the stop just moved to "picked_up"). Gated on notify_on_enroute, same
+ * shape as notifyPharmacyDeliveryResult's notify_on_delivery gate above -
+ * this is the "Delivery En Route" toggle in a pharmacy's own notification
+ * settings (components/pharmacy-notification-settings.tsx).
+ */
+export async function notifyPharmacyEnRoute(
+  supabase: { from: (table: string) => any },
+  pharmacyId: string,
+  route: { name?: string | null },
+): Promise<NotifyResult[]> {
+  const { data: recipients, error } = await supabase
+    .from("pharmacy_users")
+    .select("id")
+    .eq("pharmacy_id", pharmacyId)
+    .eq("notify_on_enroute", true)
+
+  if (error || !recipients || recipients.length === 0) {
+    return []
+  }
+
+  return Promise.all(
+    recipients.map((r: any) =>
+      createNotification(supabase, {
+        userId: r.id,
+        severity: "info",
+        title: "Driver en route",
+        message: `A driver is on the way to your pharmacy${route.name ? ` (${route.name})` : ""}.`,
+      }),
+    ),
+  )
+}
+
+/**
+ * Notifies a pharmacy's users that a new route including one of their stops
+ * was just created. Gated on notify_on_new_route, same shape as the other
+ * pharmacy_users notification gates above - this is the "New Delivery
+ * Assigned" toggle in a pharmacy's own notification settings.
+ */
+export async function notifyPharmacyNewRoute(
+  supabase: { from: (table: string) => any },
+  pharmacyId: string,
+  route: { name: string; startTime?: string | null },
+): Promise<NotifyResult[]> {
+  const { data: recipients, error } = await supabase
+    .from("pharmacy_users")
+    .select("id")
+    .eq("pharmacy_id", pharmacyId)
+    .eq("notify_on_new_route", true)
+
+  if (error || !recipients || recipients.length === 0) {
+    return []
+  }
+
+  const when = route.startTime
+    ? ` scheduled ${new Date(route.startTime).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`
+    : ""
+
+  return Promise.all(
+    recipients.map((r: any) =>
+      createNotification(supabase, {
+        userId: r.id,
+        severity: "info",
+        title: "New delivery assigned",
+        message: `A new route (${route.name}) includes a delivery to your pharmacy${when}.`,
+      }),
+    ),
+  )
+}

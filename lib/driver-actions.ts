@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
-import { notifyPharmacyOfDeliveryResult } from "@/app/actions/data-actions"
+import { notifyPharmacyOfDeliveryResult, notifyPharmacyOfEnRoute } from "@/app/actions/data-actions"
 
 /**
  * These run in the browser using the anon Supabase client, matching how the
@@ -344,6 +344,17 @@ export async function startStop(routeId: number, stopId: number, isFirstStopOnRo
   if (stopError) throw new Error(`Could not start stop: ${stopError.message}`)
   if (!stopUpdateData || stopUpdateData.length === 0) {
     throw new Error("Could not start stop: this stop no longer matches your account's permissions (it may have been reassigned).")
+  }
+
+  // Fire-and-forget: the stop's own status update above already succeeded,
+  // so this is a nice-to-have, not something the driver should wait on.
+  // `.select()` with no column list (above) already returns every column,
+  // so pharmacy_id is available on the row that came back.
+  const startedPharmacyId = stopUpdateData[0]?.pharmacy_id
+  if (startedPharmacyId) {
+    notifyPharmacyOfEnRoute(routeId, startedPharmacyId).catch((err) =>
+      console.error("En-route notification failed:", err),
+    )
   }
 
   if (isFirstStopOnRoute) {

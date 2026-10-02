@@ -76,8 +76,6 @@ export function optimizeRoute(stops: Stop[], startLat?: number, startLon?: numbe
 
   const unvisited = [...stops]
   const optimized: Stop[] = []
-  let totalDistance = 0
-  let totalDuration = 0
 
   // Start from provided location or first stop
   let currentLat = startLat || stops[0].latitude
@@ -106,28 +104,11 @@ export function optimizeRoute(stops: Stop[], startLat?: number, startLon?: numbe
     const nextStop = unvisited[nearestIndex]
     optimized.push(nextStop)
 
-    // Actual distance to the pickup (not priority-weighted)
-    const distanceToPickup = calculateDistance(currentLat, currentLon, nextStop.latitude, nextStop.longitude)
-
     // If a dropoff location is known, the driver also has to travel from
-    // pickup to dropoff before this stop is actually done — include that
-    // leg, and treat the dropoff as the driver's real position afterward
-    // rather than leaving them "at" the pharmacy for the next iteration.
+    // pickup to dropoff before this stop is actually done — treat the
+    // dropoff as the driver's real position afterward rather than leaving
+    // them "at" the pharmacy for the next iteration.
     const hasDropoff = nextStop.dropoffLatitude != null && nextStop.dropoffLongitude != null
-    const distanceToDropoff = hasDropoff
-      ? calculateDistance(nextStop.latitude, nextStop.longitude, nextStop.dropoffLatitude!, nextStop.dropoffLongitude!)
-      : 0
-
-    const actualDistance = distanceToPickup + distanceToDropoff
-    totalDistance += actualDistance
-
-    // Estimate time: 30 mph average speed + stop time
-    const travelTime = (actualDistance / 30) * 60 // minutes
-    const stopTime = nextStop.estimated_time || 30 // minutes
-    totalDuration += travelTime + stopTime
-
-    // Update current position: the dropoff if known, otherwise the pickup
-    // (preserves the original behavior when dropoff coordinates aren't provided)
     currentLat = hasDropoff ? nextStop.dropoffLatitude! : nextStop.latitude
     currentLon = hasDropoff ? nextStop.dropoffLongitude! : nextStop.longitude
 
@@ -135,7 +116,16 @@ export function optimizeRoute(stops: Stop[], startLat?: number, startLon?: numbe
     unvisited.splice(nearestIndex, 1)
   }
 
-  const refined = twoOptImprove(optimized, startLat ?? stops[0].latitude, startLon ?? stops[0].longitude)
+  const startingLat = startLat ?? stops[0].latitude
+  const startingLon = startLon ?? stops[0].longitude
+
+  const refined = twoOptImprove(optimized, startingLat, startingLon)
+  // Distance/duration are computed from the refined (final) order, not the
+  // pre-refinement one — previously these stats were accumulated during the
+  // nearest-neighbor pass above and never recalculated after twoOptImprove
+  // reordered the stops, so the numbers shown to the admin didn't actually
+  // describe the route being returned.
+  const { totalDistance, totalDuration } = computeRouteTotals(refined, startingLat, startingLon)
 
   return {
     stops: refined,
@@ -144,15 +134,51 @@ export function optimizeRoute(stops: Stop[], startLat?: number, startLon?: numbe
   }
 }
 
-// Total travel distance for a given stop order, starting from (startLat, startLon).
-// Mirrors optimizeRoute's own distance accounting (pickup leg + dropoff leg per stop).
-function routeLength(order: Stop[], startLat: number, startLon: number): number {
+// Real (unweighted) distance/duration for a given stop order — used once,
+// after the final order is chosen, to produce the numbers shown to the
+// admin. Mirrors the per-leg accounting optimizeRoute's nearest-neighbor
+// phase used to do inline.
+function computeRouteTotals(order: Stop[], startLat: number, startLon: number): { totalDistance: number; totalDuration: number } {
+  let totalDistance = 0
+  let totalDuration = 0
+  let lat = startLat
+  let lon = startLon
+
+  for (const stop of order) {
+    const distanceToPickup = calculateDistance(lat, lon, stop.latitude, stop.longitude)
+    const hasDropoff = stop.dropoffLatitude != null && stop.dropoffLongitude != null
+    const distanceToDropoff = hasDropoff
+      ? calculateDistance(stop.latitude, stop.longitude, stop.dropoffLatitude!, stop.dropoffLongitude!)
+      : 0
+
+    const actualDistance = distanceToPickup + distanceToDropoff
+    totalDistance += actualDistance
+    totalDuration += (actualDistance / 30) * 60 + (stop.estimated_time || 30)
+
+    lat = hasDropoff ? stop.dropoffLatitude! : stop.latitude
+    lon = hasDropoff ? stop.dropoffLongitude! : stop.longitude
+  }
+
+  return { totalDistance, totalDuration }
+}
+
+// Priority-weighted "length" for a given stop order, starting from
+// (startLat, startLon). Mirrors the weighting optimizeRoute's
+// nearest-neighbor phase applies to its own stop-selection score (distance
+// to the pickup times getPriorityWeight) - NOT the real travel distance.
+// This is intentional: it's the objective twoOptImprove below optimizes,
+// so refinement tightens the route without being free to undo the
+// priority ordering nearest-neighbor already established. The real,
+// unweighted distance shown to the admin is computed separately once, by
+// computeRouteTotals, from whichever order this ends up choosing.
+function weightedRouteLength(order: Stop[], startLat: number, startLon: number): number {
   let total = 0
   let lat = startLat
   let lon = startLon
 
   for (const stop of order) {
-    total += calculateDistance(lat, lon, stop.latitude, stop.longitude)
+    const pickupDistance = calculateDistance(lat, lon, stop.latitude, stop.longitude)
+    total += pickupDistance * getPriorityWeight(stop.priority)
     if (stop.dropoffLatitude != null && stop.dropoffLongitude != null) {
       total += calculateDistance(stop.latitude, stop.longitude, stop.dropoffLatitude, stop.dropoffLongitude)
       lat = stop.dropoffLatitude
@@ -168,14 +194,23 @@ function routeLength(order: Stop[], startLat: number, startLon: number): number 
 
 // Nearest-neighbor alone tends to run ~25% above the optimal route length.
 // This is a standard 2-opt pass: repeatedly try reversing segments of the
-// route, keeping any reversal that shortens the total distance, until no
-// single reversal helps anymore. Cheap for route-sized inputs (a few dozen
-// stops at most) and meaningfully tightens the result for free.
+// route, keeping any reversal that shortens the total (priority-weighted)
+// length, until no single reversal helps anymore. Cheap for route-sized
+// inputs (a few dozen stops at most) and meaningfully tightens the result
+// for free.
+//
+// This used to compare candidates on raw distance alone, which let it
+// silently undo the priority-first ordering the nearest-neighbor phase had
+// already set up (the UI promises admins "stops you flagged as priority
+// are weighted to come first" - a purely-distance-based refinement pass
+// could reorder around that promise). Comparing on the same
+// priority-weighted metric nearest-neighbor uses keeps both phases
+// optimizing the same objective.
 function twoOptImprove(order: Stop[], startLat: number, startLon: number): Stop[] {
   if (order.length < 3) return order
 
   let best = order
-  let bestLength = routeLength(best, startLat, startLon)
+  let bestScore = weightedRouteLength(best, startLat, startLon)
   let improved = true
 
   while (improved) {
@@ -183,10 +218,10 @@ function twoOptImprove(order: Stop[], startLat: number, startLon: number): Stop[
     for (let i = 0; i < best.length - 1; i++) {
       for (let j = i + 1; j < best.length; j++) {
         const candidate = [...best.slice(0, i), ...best.slice(i, j + 1).reverse(), ...best.slice(j + 1)]
-        const candidateLength = routeLength(candidate, startLat, startLon)
-        if (candidateLength < bestLength) {
+        const candidateScore = weightedRouteLength(candidate, startLat, startLon)
+        if (candidateScore < bestScore) {
           best = candidate
-          bestLength = candidateLength
+          bestScore = candidateScore
           improved = true
         }
       }

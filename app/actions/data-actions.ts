@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getDriverDetails } from '@/lib/region-utils'
-import { notifyDriverRouteAssigned, notifyPharmacyDeliveryResult } from '@/lib/notifications'
+import { notifyDriverRouteAssigned, notifyPharmacyDeliveryResult, notifyPharmacyEnRoute, notifyPharmacyNewRoute } from '@/lib/notifications'
 
 function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -857,6 +857,13 @@ interface RouteInsertData {
     isPriority?: boolean
     designatedTime?: string | null
   }>
+  // Defaults to true (a genuinely new route should tell the pharmacies on
+  // it). Callers that shouldn't fire this per-call pass false explicitly:
+  // the series generator (one call per future occurrence - notifying for
+  // every date in a months-long recurring schedule all at once would spam
+  // the pharmacy rather than inform them) and a pharmacy creating its own
+  // route (no reason to notify them about a route they just created).
+  notifyPharmacies?: boolean
 }
 
 /**
@@ -929,6 +936,23 @@ async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClien
       await notifyDriverRouteAssigned(supabase, route.driver_id, { name: route.name, startTime: route.start_time })
     } catch (notifyError) {
       console.error('Route-assigned notification failed:', notifyError)
+    }
+  }
+
+  // Best-effort - same reasoning as the driver notification above. Only
+  // fires here, on creation of a genuinely new route, not on every
+  // edit/update path elsewhere in this file - those are changes to an
+  // already-known route, not a pharmacy's first notice of a new delivery.
+  if (routeData.notifyPharmacies !== false) {
+    const distinctPharmacyIds = Array.from(new Set(routeData.stops.map(s => s.pharmacyId)))
+    try {
+      await Promise.all(
+        distinctPharmacyIds.map(pharmacyId =>
+          notifyPharmacyNewRoute(supabase, pharmacyId, { name: route.name, startTime: route.start_time }),
+        ),
+      )
+    } catch (notifyError) {
+      console.error('New-route pharmacy notification failed:', notifyError)
     }
   }
 
@@ -1084,6 +1108,11 @@ export async function createRouteSeries(input: {
       driverId: input.driverId,
       seriesId: series.id,
       stops: input.stops,
+      // See notifyPharmacies' doc comment on RouteInsertData - a recurring
+      // series can generate many future occurrences in one call, and
+      // notifying for every single one at once would spam the pharmacy
+      // rather than inform them.
+      notifyPharmacies: false,
     })
     routes.push(route)
   }
@@ -1225,6 +1254,95 @@ export async function notifyPharmacyOfDeliveryResult(
     })
   } catch (notifyError) {
     console.error('Delivery-result notification failed:', notifyError)
+  }
+
+  return { success: true }
+}
+
+/**
+ * Notifies a pharmacy's opted-in contacts that a driver has started heading
+ * their way. Same shape and reasoning as notifyPharmacyOfDeliveryResult
+ * above - called from lib/driver-actions.ts's startStop() right after the
+ * driver's own (client-side, RLS-protected) status write succeeds.
+ */
+export async function notifyPharmacyOfEnRoute(routeId: number, pharmacyId: string) {
+  const { role } = await verifyAuth()
+  if (role !== 'driver' && role !== 'admin') {
+    throw new Error('Forbidden')
+  }
+
+  const supabase = createAdminClient()
+
+  // Best-effort - this only sends a notification, so it should never
+  // surface an error back to a driver who just started a stop.
+  try {
+    const { data: route } = await supabase.from('routes').select('name').eq('id', routeId).single()
+    await notifyPharmacyEnRoute(supabase, pharmacyId, { name: route?.name ?? null })
+  } catch (notifyError) {
+    console.error('En-route notification failed:', notifyError)
+  }
+
+  return { success: true }
+}
+
+/**
+ * A pharmacy contact's own notification preferences - which events they
+ * want surfaced (scripts/001_create_schema.sql's pharmacy_users columns).
+ * Per-user, not per-pharmacy, since different contacts at the same
+ * pharmacy may want different things.
+ */
+export async function getOwnPharmacyNotificationSettings() {
+  const { userId, role } = await verifyAuth()
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('pharmacy_users')
+    .select('notify_on_delivery, notify_on_enroute, notify_on_delay, notify_on_new_route')
+    .eq('id', userId)
+    .single()
+
+  if (error) throw error
+
+  return {
+    deliveryCompleted: data?.notify_on_delivery ?? true,
+    deliveryEnRoute: data?.notify_on_enroute ?? true,
+    deliveryDelayed: data?.notify_on_delay ?? true,
+    newDeliveryAssigned: data?.notify_on_new_route ?? false,
+  }
+}
+
+export async function updateOwnPharmacyNotificationSettings(settings: {
+  deliveryCompleted: boolean
+  deliveryEnRoute: boolean
+  deliveryDelayed: boolean
+  newDeliveryAssigned: boolean
+}) {
+  const { userId, role } = await verifyAuth()
+  if (role !== 'pharmacy') {
+    throw new Error('Forbidden: pharmacy account required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('pharmacy_users')
+    .update({
+      notify_on_delivery: settings.deliveryCompleted,
+      notify_on_enroute: settings.deliveryEnRoute,
+      notify_on_delay: settings.deliveryDelayed,
+      notify_on_new_route: settings.newDeliveryAssigned,
+    })
+    .eq('id', userId)
+    .select()
+
+  if (error) throw error
+  // Same RLS-silent-failure gap fixed elsewhere this audit (see
+  // lib/driver-actions.ts) - without this check, a blocked update here
+  // would look like a successful save even though nothing changed.
+  if (!data || data.length === 0) {
+    throw new Error('Could not save notification settings: no matching pharmacy account found')
   }
 
   return { success: true }
@@ -1998,6 +2116,9 @@ export async function pharmacyCreateRouteWithDriver(input: {
     priority: input.isEmergency ? 'urgent' : 'medium',
     driverId: input.driverId,
     stops,
+    // The pharmacy creating this route is the same pharmacy that would
+    // otherwise be notified about it - nothing to tell them here.
+    notifyPharmacies: false,
   })
 
   const { error: requestError } = await supabase.from('route_requests').insert({

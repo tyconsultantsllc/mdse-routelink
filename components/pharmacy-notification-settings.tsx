@@ -1,12 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Bell, Package, Truck } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import {
+  getOwnPharmacyNotificationSettings,
+  updateOwnPharmacyNotificationSettings,
+} from "@/app/actions/data-actions"
 
 export function PharmacyNotificationSettings() {
   const { toast } = useToast()
@@ -16,6 +20,30 @@ export function PharmacyNotificationSettings() {
     deliveryDelayed: true,
     newDeliveryAssigned: false,
   })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // These used to only ever live in localStorage and were never read back
+  // on mount, so every time this dialog reopened it silently reset to the
+  // hardcoded defaults above even though "Save Preferences" showed a
+  // success toast. They're now backed by real columns on this user's own
+  // pharmacy_users row (RLS already scopes reads/writes to their own row).
+  useEffect(() => {
+    let cancelled = false
+    getOwnPharmacyNotificationSettings()
+      .then((saved) => {
+        if (!cancelled) setSettings(saved)
+      })
+      .catch((error) => {
+        console.error("Failed to load notification settings:", error)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleToggle = (key: keyof typeof settings) => {
     setSettings((prev) => ({
@@ -24,15 +52,23 @@ export function PharmacyNotificationSettings() {
     }))
   }
 
-  const handleSave = () => {
-    // Save to localStorage or backend
-    if (typeof window !== "undefined") {
-      localStorage.setItem("pharmacyNotificationSettings", JSON.stringify(settings))
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await updateOwnPharmacyNotificationSettings(settings)
+      toast({
+        title: "Settings saved",
+        description: "Your notification preferences have been updated.",
+      })
+    } catch (error) {
+      toast({
+        title: "Could not save settings",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
     }
-    toast({
-      title: "Settings saved",
-      description: "Your notification preferences have been updated.",
-    })
   }
 
   return (
@@ -63,6 +99,7 @@ export function PharmacyNotificationSettings() {
                 id="completed"
                 checked={settings.deliveryCompleted}
                 onCheckedChange={() => handleToggle("deliveryCompleted")}
+                disabled={loading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -79,6 +116,7 @@ export function PharmacyNotificationSettings() {
                 id="enroute"
                 checked={settings.deliveryEnRoute}
                 onCheckedChange={() => handleToggle("deliveryEnRoute")}
+                disabled={loading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -88,13 +126,16 @@ export function PharmacyNotificationSettings() {
                   <Label htmlFor="delayed" className="cursor-pointer">
                     Delivery Delayed
                   </Label>
-                  <p className="text-xs text-muted-foreground">When a delivery is running behind schedule</p>
+                  <p className="text-xs text-muted-foreground">
+                    When a delivery is running behind schedule (not yet sent - there's no delay detection built yet)
+                  </p>
                 </div>
               </div>
               <Switch
                 id="delayed"
                 checked={settings.deliveryDelayed}
                 onCheckedChange={() => handleToggle("deliveryDelayed")}
+                disabled={loading}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -111,13 +152,14 @@ export function PharmacyNotificationSettings() {
                 id="assigned"
                 checked={settings.newDeliveryAssigned}
                 onCheckedChange={() => handleToggle("newDeliveryAssigned")}
+                disabled={loading}
               />
             </div>
           </div>
         </div>
 
-        <Button onClick={handleSave} className="w-full">
-          Save Preferences
+        <Button onClick={handleSave} className="w-full" disabled={loading || saving}>
+          {saving ? "Saving..." : "Save Preferences"}
         </Button>
       </CardContent>
     </Card>

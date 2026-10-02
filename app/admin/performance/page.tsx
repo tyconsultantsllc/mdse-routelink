@@ -66,30 +66,51 @@ export default function PerformanceDashboard() {
 
       const routesById = new Map(stats.routes.map((r: any) => [r.id, { end_time: r.end_time }]))
 
+      // The "Last 7/30/90 days / Last year" selector above used to be
+      // decorative - changing it just re-ran this same fetch with the same
+      // unfiltered, all-time data, so nothing on the page actually changed.
+      // Scoping each driver's totals/on-time rate to this window is what
+      // makes the selector do something real.
+      const rangeDays = parseInt(timeRange, 10) || 30
+      const rangeStart = new Date()
+      rangeStart.setDate(rangeStart.getDate() - rangeDays)
+
       // Calculate performance metrics for drivers
       const now = new Date()
       const drivers = users.filter((u: any) => u.role === 'driver')
       const performance = drivers.map((driver: any) => {
-        const driverLogs = stats.logs.filter((log: any) => log.driver_id === driver.id)
-        const driverRoutes = stats.routes.filter((route: any) => route.driver_id === driver.id)
+        // Unfiltered - only used for the calendar month-over-month trend
+        // arrow below, which is intentionally independent of the selected
+        // range.
+        const driverLogsAll = stats.logs.filter((log: any) => log.driver_id === driver.id)
+        const driverLogsInRange = driverLogsAll.filter((log: any) => new Date(log.timestamp) >= rangeStart)
 
-        const thisMonthCount = driverLogs.filter((log: any) => {
+        const thisMonthCount = driverLogsAll.filter((log: any) => {
           const d = new Date(log.timestamp)
           return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
         }).length
         const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        const lastMonthCount = driverLogs.filter((log: any) => {
+        const lastMonthCount = driverLogsAll.filter((log: any) => {
           const d = new Date(log.timestamp)
           return d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() === lastMonthDate.getMonth()
         }).length
+
+        // Distinguishes "0% on time" from "no determinable data" so the
+        // Trends tab's recommendations below don't mistake a driver with no
+        // measurable deliveries this period for a driver who's actually
+        // underperforming.
+        const onTimeDataAvailable = driverLogsInRange.some(
+          (log: any) => log.action === 'delivered' && routesById.get(log.route_id)?.end_time,
+        )
 
         return {
           id: driver.id,
           name: `${driver.first_name} ${driver.last_name}`,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${driver.id}`,
           region: getDriverDetails(driver)?.region || null,
-          totalDeliveries: driverLogs.length,
-          onTimeRate: calculateOnTimeRate(driverLogs, routesById, gracePeriod),
+          totalDeliveries: driverLogsInRange.length,
+          onTimeRate: calculateOnTimeRate(driverLogsInRange, routesById, gracePeriod),
+          onTimeDataAvailable,
           avgDeliveryTime: 0, // no reliable duration data source yet
           customerRating: 0, // no ratings system exists yet
           trend: thisMonthCount >= lastMonthCount ? 'up' : 'down',
@@ -161,6 +182,110 @@ export default function PerformanceDashboard() {
       onTimeRate: calculateOnTimeRate(monthLogs, routesByIdForTrend, gracePeriodMinutes),
     }
   })
+
+  // The Trends tab below used to show entirely hardcoded alert/recommendation
+  // text ("Team average increased by 3% this month", etc.) with zero
+  // connection to real data - these are now all derived from the same logs
+  // already loaded above, and simply don't appear when there isn't enough
+  // data yet to say anything meaningful (same "don't fabricate it" approach
+  // as the N/A / "No ratings yet" cards elsewhere on this page).
+  const MIN_SAMPLE_SIZE = 5
+
+  const periodLengthDays = parseInt(timeRange, 10) || 30
+  const periodStart = new Date(today)
+  periodStart.setDate(periodStart.getDate() - periodLengthDays)
+  const previousPeriodStart = new Date(periodStart)
+  previousPeriodStart.setDate(previousPeriodStart.getDate() - periodLengthDays)
+
+  const logsInPeriod = allLogs.filter((l: any) => {
+    const d = new Date(l.timestamp)
+    return d >= periodStart && d <= today
+  })
+  const logsInPreviousPeriod = allLogs.filter((l: any) => {
+    const d = new Date(l.timestamp)
+    return d >= previousPeriodStart && d < periodStart
+  })
+
+  const determinableCount = (logs: any[]) =>
+    logs.filter((l) => l.action === 'delivered' && routesByIdForTrend.get(l.route_id)?.end_time).length
+
+  const currentPeriodOnTime = calculateOnTimeRate(logsInPeriod, routesByIdForTrend, gracePeriodMinutes)
+  const previousPeriodOnTime = calculateOnTimeRate(logsInPreviousPeriod, routesByIdForTrend, gracePeriodMinutes)
+  const onTimeTrendDelta =
+    determinableCount(logsInPeriod) >= MIN_SAMPLE_SIZE && determinableCount(logsInPreviousPeriod) >= MIN_SAMPLE_SIZE
+      ? currentPeriodOnTime - previousPeriodOnTime
+      : null
+
+  const isWeekendDate = (d: Date) => d.getDay() === 0 || d.getDay() === 6
+  const weekendLogs = logsInPeriod.filter((l: any) => isWeekendDate(new Date(l.timestamp)))
+  const weekdayLogs = logsInPeriod.filter((l: any) => !isWeekendDate(new Date(l.timestamp)))
+  const weekendOnTime = calculateOnTimeRate(weekendLogs, routesByIdForTrend, gracePeriodMinutes)
+  const weekdayOnTime = calculateOnTimeRate(weekdayLogs, routesByIdForTrend, gracePeriodMinutes)
+  const weekendVsWeekdayDelta =
+    determinableCount(weekendLogs) >= MIN_SAMPLE_SIZE && determinableCount(weekdayLogs) >= MIN_SAMPLE_SIZE
+      ? weekendOnTime - weekdayOnTime
+      : null
+
+  const deliveredInPeriod = logsInPeriod.filter((l: any) => l.action === 'delivered')
+  const hourCounts = new Array(24).fill(0)
+  deliveredInPeriod.forEach((l: any) => {
+    hourCounts[new Date(l.timestamp).getHours()]++
+  })
+  const peakHour = deliveredInPeriod.length >= MIN_SAMPLE_SIZE ? hourCounts.indexOf(Math.max(...hourCounts)) : null
+  const formatHour = (h: number) => {
+    const period = h >= 12 ? 'PM' : 'AM'
+    const hour12 = h % 12 === 0 ? 12 : h % 12
+    return `${hour12}:00 ${period}`
+  }
+
+  type TrendAlert = { icon: 'up' | 'down' | 'neutral'; title: string; message: string }
+  const performanceAlerts: TrendAlert[] = []
+  if (onTimeTrendDelta !== null && Math.abs(onTimeTrendDelta) >= 1) {
+    performanceAlerts.push(
+      onTimeTrendDelta > 0
+        ? {
+            icon: 'up',
+            title: 'On-time rate improving',
+            message: `Team on-time rate is up ${onTimeTrendDelta} point${Math.abs(onTimeTrendDelta) === 1 ? '' : 's'} vs. the previous ${periodLengthDays} days`,
+          }
+        : {
+            icon: 'down',
+            title: 'On-time rate declining',
+            message: `Team on-time rate is down ${Math.abs(onTimeTrendDelta)} point${Math.abs(onTimeTrendDelta) === 1 ? '' : 's'} vs. the previous ${periodLengthDays} days`,
+          },
+    )
+  }
+  if (weekendVsWeekdayDelta !== null && weekendVsWeekdayDelta <= -3) {
+    performanceAlerts.push({
+      icon: 'down',
+      title: 'Weekend performance lower',
+      message: `Weekend on-time rate is ${Math.abs(weekendVsWeekdayDelta)} points lower than weekdays over the last ${periodLengthDays} days`,
+    })
+  }
+  if (peakHour !== null) {
+    performanceAlerts.push({
+      icon: 'neutral',
+      title: 'Peak delivery hour identified',
+      message: `Most deliveries in the last ${periodLengthDays} days were completed around ${formatHour(peakHour)}`,
+    })
+  }
+
+  const trendRecommendations: Array<{ title: string; message: string }> = []
+  const driversBelowTarget = filteredDriverPerformance.filter(
+    (d) => d.onTimeDataAvailable && d.totalDeliveries >= MIN_SAMPLE_SIZE && d.onTimeRate < 90,
+  )
+  if (driversBelowTarget.length > 0) {
+    trendRecommendations.push({
+      title: 'Training focus',
+      message: `${driversBelowTarget.map((d) => d.name).join(', ')} ${driversBelowTarget.length === 1 ? 'is' : 'are'} below a 90% on-time rate over the last ${periodLengthDays} days`,
+    })
+  }
+  if (weekendVsWeekdayDelta !== null && weekendVsWeekdayDelta <= -3) {
+    trendRecommendations.push({
+      title: 'Route optimization',
+      message: 'Consider adjusting weekend routes or staffing - weekend deliveries are running behind weekday performance',
+    })
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -407,55 +532,69 @@ export default function PerformanceDashboard() {
                     <Card className="p-6">
                       <h3 className="text-lg font-semibold mb-4">Performance Alerts</h3>
                       <div className="space-y-3">
-                        <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                          <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                          <div>
-                            <p className="font-medium text-green-900">On-time rate improving</p>
-                            <p className="text-sm text-green-700">Team average increased by 3% this month</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-                          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                          <div>
-                            <p className="font-medium text-yellow-900">Weekend performance lower</p>
-                            <p className="text-sm text-yellow-700">Saturday/Sunday deliveries 8% slower on average</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                          <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
-                          <div>
-                            <p className="font-medium text-blue-900">Peak hours identified</p>
-                            <p className="text-sm text-blue-700">Best performance between 9 AM - 2 PM</p>
-                          </div>
-                        </div>
+                        {performanceAlerts.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Not enough delivery data yet in this period to surface trends.
+                          </p>
+                        ) : (
+                          performanceAlerts.map((alert, i) => {
+                            const style =
+                              alert.icon === 'up'
+                                ? {
+                                    wrap: 'bg-green-50 border-green-200',
+                                    title: 'text-green-900',
+                                    text: 'text-green-700',
+                                    iconColor: 'text-green-600',
+                                    Icon: CheckCircle,
+                                  }
+                                : alert.icon === 'down'
+                                  ? {
+                                      wrap: 'bg-yellow-50 border-yellow-200',
+                                      title: 'text-yellow-900',
+                                      text: 'text-yellow-700',
+                                      iconColor: 'text-yellow-600',
+                                      Icon: AlertTriangle,
+                                    }
+                                  : {
+                                      wrap: 'bg-blue-50 border-blue-200',
+                                      title: 'text-blue-900',
+                                      text: 'text-blue-700',
+                                      iconColor: 'text-blue-600',
+                                      Icon: Clock,
+                                    }
+                            const Icon = style.Icon
+                            return (
+                              <div
+                                key={i}
+                                className={`flex items-start gap-3 p-3 rounded-lg border ${style.wrap}`}
+                              >
+                                <Icon className={`h-5 w-5 mt-0.5 ${style.iconColor}`} />
+                                <div>
+                                  <p className={`font-medium ${style.title}`}>{alert.title}</p>
+                                  <p className={`text-sm ${style.text}`}>{alert.message}</p>
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
                       </div>
                     </Card>
 
                     <Card className="p-6">
                       <h3 className="text-lg font-semibold mb-4">Improvement Recommendations</h3>
                       <div className="space-y-3">
-                        <div className="p-3 rounded-lg border">
-                          <p className="font-medium">Route Optimization</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Consider adjusting routes during peak traffic hours to maintain delivery times
+                        {trendRecommendations.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No specific recommendations right now - performance looks steady.
                           </p>
-                        </div>
-
-                        <div className="p-3 rounded-lg border">
-                          <p className="font-medium">Training Focus</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Provide additional training for drivers with on-time rates below 90%
-                          </p>
-                        </div>
-
-                        <div className="p-3 rounded-lg border">
-                          <p className="font-medium">Resource Allocation</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Add 1-2 drivers during Thursday-Friday peak periods
-                          </p>
-                        </div>
+                        ) : (
+                          trendRecommendations.map((rec, i) => (
+                            <div key={i} className="p-3 rounded-lg border">
+                              <p className="font-medium">{rec.title}</p>
+                              <p className="text-sm text-muted-foreground mt-1">{rec.message}</p>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </Card>
                   </div>
