@@ -136,6 +136,9 @@ export default function SettingsPage() {
 
       const savedSystem = await getAppSetting("system_settings")
       if (savedSystem) setSystemSettings((prev) => ({ ...prev, ...savedSystem }))
+
+      const savedNotifications = await getAppSetting("notification_settings")
+      if (savedNotifications) setNotificationSettings((prev) => ({ ...prev, ...savedNotifications }))
     }
     loadSettings()
   }, [])
@@ -378,11 +381,22 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveNotifications = () => {
-    toast({
-      title: "Notifications Updated",
-      description: "Your notification preferences have been saved",
-    })
+  const handleSaveNotifications = async () => {
+    try {
+      const { setAppSetting } = await import("@/lib/app-settings")
+      await setAppSetting("notification_settings", notificationSettings)
+
+      toast({
+        title: "Notifications Updated",
+        description: "Your notification preferences have been saved",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save notification preferences",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleSaveCompany = async () => {
