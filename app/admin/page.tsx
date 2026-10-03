@@ -15,7 +15,8 @@ import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button" // Fixed import to use named export instead of default
 import { createClient } from "@/lib/supabase/client"
-import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
+import { REGION_FALLBACK_COORDS, getRouteRegion, type Region } from "@/lib/region-utils"
+import { RegionFilter } from "@/components/region-filter"
 
 const AdminMap = dynamic(() => import("@/components/admin-map"), {
   ssr: false,
@@ -36,6 +37,7 @@ interface Driver {
   statusText: string
   progress: string
   location: { lat: number; lng: number }
+  region?: string | null
 }
 
 interface Route {
@@ -61,6 +63,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [unassignedRoutes, setUnassignedRoutes] = useState<Route[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  // Which region the live map shows - "all" shows every region's drivers
+  // and routes together on one map, same as before this existed.
+  const [selectedRegion, setSelectedRegion] = useState("all")
   // Which urgent-and-unassigned route ids we've already toasted about, so the
   // 15s poll doesn't re-fire the same "urgent" alert forever - only a route
   // that's newly urgent-and-unassigned since the last check gets a toast.
@@ -160,6 +165,7 @@ export default function AdminDashboard() {
             lat: d.current_latitude || REGION_FALLBACK_COORDS[d.region as Region]?.lat || 39.8283,
             lng: d.current_longitude || REGION_FALLBACK_COORDS[d.region as Region]?.lng || -98.5795,
           },
+          region: d.region ?? null,
         }))
       )
 
@@ -168,6 +174,9 @@ export default function AdminDashboard() {
           ...r,
           stops: r.route_stops?.length || 0,
           stopDetails: (r.route_stops || []).sort((a: any, b: any) => (a.stop_order || 0) - (b.stop_order || 0)),
+          // Same derivation the Routes page uses: a route's region comes
+          // from its stops' pharmacies, not a column on the route itself.
+          region: getRouteRegion(r.route_stops || []),
         }))
       )
 
@@ -386,9 +395,16 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 gap-4 md:gap-6 mb-4 md:mb-6">
               {/* Map - Full width on mobile for better visibility */}
               <Card className="p-4 md:p-6">
-                <h2 className="text-base md:text-lg font-medium text-foreground mb-3 md:mb-4">Live Driver Locations</h2>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3 md:mb-4">
+                  <h2 className="text-base md:text-lg font-medium text-foreground">Live Driver Locations</h2>
+                  <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
+                </div>
                 <div className="h-[300px] md:h-[400px]">
-                  <AdminMap drivers={drivers} routes={routes} />
+                  <AdminMap
+                    drivers={selectedRegion === "all" ? drivers : drivers.filter((d: any) => d.region === selectedRegion)}
+                    routes={selectedRegion === "all" ? routes : routes.filter((r: any) => r.region === selectedRegion)}
+                    region={selectedRegion as "all" | Region}
+                  />
                 </div>
               </Card>
 

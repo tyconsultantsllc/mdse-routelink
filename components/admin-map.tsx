@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
+import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
 
 interface Driver {
   id: number
@@ -29,9 +30,14 @@ interface Route {
 interface AdminMapProps {
   drivers: Driver[]
   routes?: Route[]
+  // Which region the caller has already filtered `drivers`/`routes` down
+  // to - "all" (the default) means both regions are being shown together.
+  // This only controls where the map centers/zooms; it doesn't filter
+  // anything itself, the caller already did that.
+  region?: "all" | Region
 }
 
-export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
+export default function AdminMap({ drivers, routes = [], region = "all" }: AdminMapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const markersRef = useRef<Map<number, L.Marker>>(new Map())
   const pathsRef = useRef<Map<number, L.Polyline>>(new Map())
@@ -312,6 +318,34 @@ export default function AdminMap({ drivers, routes = [] }: AdminMapProps) {
       path.setLatLngs(newCoords)
     })
   }, [drivers])
+
+  // Gives each region its own view: fits tightly around whichever drivers
+  // are actually plotted (which the caller has already filtered to the
+  // selected region, or left as everyone for "all" - so "all" naturally
+  // shows both regions together on one map, at whatever zoom fits both).
+  // Falls back to a fixed region-center/continental view when there's
+  // nothing live to fit around yet, rather than leaving the map wherever
+  // it happened to be.
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current
+
+    const points: [number, number][] = drivers
+      .filter((d) => d.status !== "inactive")
+      .map((d) => [d.location.lat, d.location.lng])
+
+    if (points.length > 0) {
+      map.fitBounds(L.latLngBounds(points), { padding: [50, 50], maxZoom: region === "all" ? 6 : 11 })
+      return
+    }
+
+    if (region !== "all") {
+      const coords = REGION_FALLBACK_COORDS[region]
+      map.setView([coords.lat, coords.lng], 9)
+    } else {
+      map.setView([39.8283, -98.5795], 4)
+    }
+  }, [drivers, region])
 
   // `isolate` gives this its own stacking context. Without it, Leaflet's
   // internal panes (tiles/markers/popups use z-index up to 700 - see

@@ -231,8 +231,14 @@ export default function RouteManagement() {
   // priority filter) - a fresh array here on every render would restart
   // RouteMap's draw effect (it depends on this prop) before it ever finishes.
   const activeRoutesForMap = useMemo(
-    () => routes.filter((r) => r.status !== "completed" && r.status !== "cancelled"),
-    [routes],
+    () =>
+      routes.filter(
+        (r) =>
+          r.status !== "completed" &&
+          r.status !== "cancelled" &&
+          (selectedRegion === "all" || r.region === selectedRegion),
+      ),
+    [routes, selectedRegion],
   )
 
   // "View on Map" is available from the full route list, including
@@ -299,8 +305,9 @@ export default function RouteManagement() {
               <div className="mb-3">
                 <h3 className="text-sm font-semibold text-foreground">Active Routes Map</h3>
                 <p className="text-xs text-muted-foreground">
-                  Shows every pending or in-progress route's delivery path. Completed and cancelled routes aren't plotted here by
-                  default, but "View on Map" will still pull one up on request.
+                  Shows every pending or in-progress route's delivery path for the region selected above (or both regions
+                  together, for "All Regions"). Completed and cancelled routes aren't plotted here by default, but "View on
+                  Map" will still pull one up on request regardless of region.
                 </p>
                 {activeRoutesForMap.length === 0 && !highlightedExtraRoute && (
                   <p className="text-xs text-amber-700 mt-1">
