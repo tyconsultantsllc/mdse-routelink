@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button" // Fixed import to use named export instead of default
 import { createClient } from "@/lib/supabase/client"
-import { REGION_FALLBACK_COORDS, getRouteRegion, type Region } from "@/lib/region-utils"
+import { REGION_FALLBACK_COORDS, REGION_MAP_COLORS, getRouteRegion, type Region } from "@/lib/region-utils"
 import { RegionFilter } from "@/components/region-filter"
 
 const AdminMap = dynamic(() => import("@/components/admin-map"), {
@@ -395,10 +395,22 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 gap-4 md:gap-6 mb-4 md:mb-6">
               {/* Map - Full width on mobile for better visibility */}
               <Card className="p-4 md:p-6">
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-3 md:mb-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
                   <h2 className="text-base md:text-lg font-medium text-foreground">Live Driver Locations</h2>
                   <RegionFilter value={selectedRegion} onChange={setSelectedRegion} />
                 </div>
+                {selectedRegion === "all" && (
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3 md:mb-4">
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: REGION_MAP_COLORS.socal }} />
+                      SoCal driver
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: REGION_MAP_COLORS.minnesota }} />
+                      Minnesota driver
+                    </span>
+                  </div>
+                )}
                 <div className="h-[300px] md:h-[400px]">
                   <AdminMap
                     drivers={selectedRegion === "all" ? drivers : drivers.filter((d: any) => d.region === selectedRegion)}

@@ -1,71 +1,59 @@
-# Region-aware maps (SoCal / Minnesota / both)
+# Region color-coding on the Dashboard map
 
-## What changed
+Builds on the last delivery (region-aware maps). Two things:
 
-Both admin maps now respect region, each giving a distinct view per region
-plus the ability to show both together:
+## 1. Color-coded driver markers when showing both regions
 
-**Dashboard map** (`app/admin/page.tsx` → "Live Driver Locations"):
-- Added a region dropdown (the same "All Regions / Southern California /
-  Minnesota" control already used on Drivers, Pharmacies, Performance, and
-  Reports) right above the map.
-- Picking a region now filters both the driver markers and the route lines
-  to that region only, and the map automatically zooms/centers tightly on
-  whichever drivers are actually out there (falling back to that region's
-  general area if no one's currently active).
-- Picking "All Regions" shows every driver/route from both regions
-  together on one map, zoomed out to fit all of them - this is also
-  exactly what it did before this change, so nothing changes if you never
-  touch the new dropdown.
+On the Dashboard's "Live Driver Locations" map, when "All Regions" is
+selected, each driver marker now gets a colored ring around it — amber for
+SoCal, indigo for Minnesota — so you can tell the two apart at a glance on
+the combined view. The marker's fill color is unchanged (still
+green/amber for active/on-break) — that's the more urgent signal, so
+region is a second, separate channel (the ring) rather than replacing it.
 
-**Routes map** (`app/admin/routes/page.tsx` → "Active Routes Map"):
-- This page already had a region dropdown, but it only filtered the route
-  list below the map - the map itself always showed every region's routes
-  regardless of what was selected. That's now fixed: the map filters by
-  the same dropdown, and (since this map already auto-fits to whatever
-  routes it's drawing) a single region's routes now naturally zoom in on
-  just that region, while "All Regions" fits both together like before.
+A small legend ("● SoCal driver  ● Minnesota driver") appears above the map
+only when "All Regions" is selected — once you narrow to one region, every
+marker would get the same ring, so the legend (and the ring itself) stays
+out of the way.
+
+The driver's region is also now shown in their map popup (e.g. "Active ·
+SoCal"), for when you click a marker directly.
+
+I kept this to the Dashboard's driver markers specifically, since that's
+what you flagged as useful for the combined view. The Routes page's map
+still colors route lines by priority (urgent/high/medium/low) — I left
+that alone since overriding it with region color would bury that signal.
+Say the word if you want region color there too and we can figure out how
+to show both without clashing.
+
+## 2. The region dropdown already resets to "All Regions"
+
+No change needed here — both dropdowns (Dashboard and Routes) already
+reset to "All Regions" on every page load, same as the other pages that
+use this same control. That was the existing behavior I was describing
+last time, not something that needed building.
 
 ## Files changed
 
-- `components/admin-map.tsx` — accepts a new optional `region` prop, used
-  only to decide where to center/zoom when there's nothing live to fit
-  around; otherwise behaves exactly as before.
-- `app/admin/page.tsx` — adds the region dropdown + state, tags each driver
-  and route with its region, and filters what's passed to the map.
-- `app/admin/routes/page.tsx` — the existing region dropdown's state now
-  also filters the map's route list (previously only filtered the table),
-  plus a one-line wording update under the map saying so.
-
-No database changes — this is all built from region data your app already
-has (`drivers.region`, and each route's region derived from its stops'
-pharmacies, the same way the Routes page already computed it).
+- `lib/region-utils.ts` — adds `REGION_MAP_COLORS` (hex versions of the
+  same amber/indigo used in region badges elsewhere, for contexts like a
+  Leaflet marker that can't use Tailwind classes).
+- `components/admin-map.tsx` — driver markers get a region-colored ring
+  when `region="all"`, and the popup shows the driver's region.
+- `app/admin/page.tsx` — adds the small legend above the map, shown only
+  when "All Regions" is selected.
 
 ## Steps to apply
 
-1. Unzip into your project folder, overwriting the three existing files.
+1. Unzip into your project folder, overwriting the three files.
 2. Commit and push:
    ```powershell
    git add -A
-   git commit -m "Make admin maps region-aware (SoCal / Minnesota / both)"
+   git commit -m "Color-code driver markers by region on the combined dashboard map"
    git push
    ```
-3. Test: open the Dashboard, switch the new region dropdown above the map
-   and confirm it narrows to that region's drivers; open Routes, switch its
-   existing dropdown and confirm the map (not just the table below it) now
-   changes too.
-
-## Worth knowing
-
-- If a region currently has zero active drivers, the dashboard map falls
-  back to that region's general area (same fallback coordinates already
-  used elsewhere in the app for Orange County, CA / St. Paul, MN) rather
-  than showing an empty continental-US view.
-- I didn't add any color-coding to distinguish SoCal vs. Minnesota markers
-  when "All Regions" is selected (e.g. tinting one region's drivers
-  differently from the other's) - happy to add that if it'd help tell the
-  two apart at a glance on the combined view.
-- This dropdown's choice isn't remembered between page visits (it resets to
-  "All Regions" each time you load the page) - matches how the same
-  dropdown already behaves on every other page it's used on. Let me know
-  if you'd rather it stick to whatever you last picked.
+3. Test: open the Dashboard with "All Regions" selected and confirm driver
+   markers show a colored ring (amber/indigo) and the legend appears above
+   the map; switch to a single region and confirm the ring and legend both
+   disappear (every marker shown is already that region, so there's
+   nothing to distinguish).

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { REGION_FALLBACK_COORDS, type Region } from "@/lib/region-utils"
+import { REGION_FALLBACK_COORDS, REGION_MAP_COLORS, REGION_LABELS, type Region } from "@/lib/region-utils"
 
 interface Driver {
   id: number
@@ -12,6 +12,7 @@ interface Driver {
   progress: string
   location: { lat: number; lng: number }
   status: "active" | "paused" | "inactive"
+  region?: string | null
 }
 
 interface Route {
@@ -238,6 +239,17 @@ export default function AdminMap({ drivers, routes = [], region = "all" }: Admin
       const color = driver.status === "active" ? "#10b981" : "#f59e0b"
       const animation = driver.status === "active" ? "pulse-green" : "pulse-yellow"
 
+      // The fill color is status (active/on break) - that's the more
+      // urgent signal and shouldn't change. Region gets a second, separate
+      // channel (the ring around it) instead, and only when both regions
+      // might actually be on screen together - with a single region
+      // already selected, every marker would get the same ring, which is
+      // just noise.
+      const regionBorder =
+        region === "all" && (driver.region === "socal" || driver.region === "minnesota")
+          ? REGION_MAP_COLORS[driver.region as Region]
+          : "white"
+
       const driverIcon = L.divIcon({
         className: "custom-driver-marker",
         html: `
@@ -248,7 +260,7 @@ export default function AdminMap({ drivers, routes = [], region = "all" }: Admin
               left: 50%;
               transform: translate(-50%, -50%);
               background: ${color};
-              border: 3px solid white;
+              border: 3px solid ${regionBorder};
               border-radius: 50%;
               width: 40px;
               height: 40px;
@@ -286,6 +298,9 @@ export default function AdminMap({ drivers, routes = [], region = "all" }: Admin
         marker.setIcon(driverIcon)
       }
 
+      const regionLabel =
+        driver.region === "socal" || driver.region === "minnesota" ? REGION_LABELS[driver.region as Region] : null
+
       marker.bindPopup(`
         <div class="p-2">
           <p class="font-medium">${driver.name}</p>
@@ -293,6 +308,7 @@ export default function AdminMap({ drivers, routes = [], region = "all" }: Admin
           <p class="text-xs mt-1">
             <span class="inline-block w-2 h-2 rounded-full ${driver.status === "active" ? "bg-green-500" : "bg-yellow-500"}"></span>
             <span class="ml-1">${driver.status === "active" ? "Active" : "On Break"}</span>
+            ${regionLabel ? `<span class="ml-2 text-gray-500">&middot; ${regionLabel}</span>` : ""}
           </p>
         </div>
       `)

@@ -25,6 +25,14 @@ export const REGION_COLORS: Record<Region, string> = {
   minnesota: "bg-indigo-100 text-indigo-800 border-indigo-300",
 }
 
+// Same two regions, same color family as REGION_COLORS above (amber /
+// indigo), but as plain hex - for contexts that can't use Tailwind classes,
+// like a Leaflet marker's inline style or canvas-drawn icon.
+export const REGION_MAP_COLORS: Record<Region, string> = {
+  socal: "#f59e0b",
+  minnesota: "#6366f1",
+}
+
 // Rough regional center points, used only as a location fallback when real
 // coordinates aren't available yet (e.g. GPS hasn't reported, or a pharmacy
 // has no geocoded address) - never shown as an actual precise location.
