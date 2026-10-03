@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { Truck, MapPin, Clock, Navigation, Eye, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays, ScanLine, WifiOff, RefreshCw } from 'lucide-react'
+import { Truck, MapPin, Clock, Navigation, Eye, Activity, CheckCircle, LogOut, Settings, PackageX, CalendarDays, ScanLine, WifiOff, RefreshCw, FileClock } from 'lucide-react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ import { AnnouncementBanner } from "@/components/announcement-banner"
 import { DriverSettingsDialog } from "@/components/driver-settings-dialog"
 import { ReturnToPharmacyDialog } from "@/components/return-to-pharmacy-dialog"
 import { DriverCalendarDialog } from "@/components/driver-calendar-dialog"
+import { DriverTimesheetDialog } from "@/components/driver-timesheet-dialog"
 import { UnconfirmedRoutesAlert } from "@/components/unconfirmed-routes-alert"
 import { REGION_FALLBACK_COORDS } from "@/lib/region-utils"
 import { DriverMessagingWidget } from "@/components/driver-messaging-widget"
@@ -97,6 +98,7 @@ export default function DriverTrackingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [returnsDialogOpen, setReturnsDialogOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
+  const [timesheetOpen, setTimesheetOpen] = useState(false)
   const [unconfirmedAlertDismissed, setUnconfirmedAlertDismissed] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
@@ -892,6 +894,21 @@ export default function DriverTrackingPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => setTimesheetOpen(true)}
+                      className="h-9 w-9 md:h-10 md:w-10"
+                    >
+                      <FileClock className="h-4 w-4 md:h-5 md:w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>My Timesheet</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setSettingsOpen(true)}
                       className="h-9 w-9 md:h-10 md:w-10"
                     >
@@ -1353,6 +1370,7 @@ export default function DriverTrackingPage() {
         routesByDate={routesByDate}
         onConfirmationChanged={fetchDriverRoutes}
       />
+      <DriverTimesheetDialog open={timesheetOpen} onOpenChange={setTimesheetOpen} />
       <UnconfirmedRoutesAlert
         open={unconfirmedRoutesList.length > 0 && !unconfirmedAlertDismissed}
         routes={unconfirmedRoutesList}

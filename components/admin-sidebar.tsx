@@ -21,6 +21,7 @@ import {
   MessageSquare,
   AlertCircle,
   Route,
+  FileClock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -40,6 +41,7 @@ const navigation = [
   { name: "Messages", href: "/admin/messages", icon: MessageSquare },
   { name: "Pharmacy Reports", href: "/admin/pharmacy-reports", icon: AlertCircle },
   { name: "Route Requests", href: "/admin/route-requests", icon: Route },
+  { name: "Timesheets", href: "/admin/timesheets", icon: FileClock },
   { name: "Delivery Logs", href: "/admin/logs", icon: Clock },
   { name: "Announcements", href: "/admin/announcements", icon: Megaphone },
   { name: "Reports", href: "/admin/reports", icon: BarChart2 },
@@ -56,6 +58,7 @@ export function AdminSidebar() {
   const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useAdminMobileMenu()
   const [openReportsCount, setOpenReportsCount] = useState(0)
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
+  const [pendingTimesheetCount, setPendingTimesheetCount] = useState(0)
   const [adminName, setAdminName] = useState("Admin User")
 
   useEffect(() => {
@@ -121,6 +124,20 @@ export function AdminSidebar() {
     }
     checkRouteRequests()
     const interval = setInterval(checkRouteRequests, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const checkTimesheetEdits = async () => {
+      const supabase = createClient()
+      const { count } = await supabase
+        .from("timesheet_edit_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending")
+      setPendingTimesheetCount(count || 0)
+    }
+    checkTimesheetEdits()
+    const interval = setInterval(checkTimesheetEdits, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -190,6 +207,11 @@ export function AdminSidebar() {
                               {pendingRequestsCount > 9 ? "9+" : pendingRequestsCount}
                             </span>
                           )}
+                          {item.name === "Timesheets" && pendingTimesheetCount > 0 && (
+                            <span className="ml-auto bg-destructive text-destructive-foreground text-xs font-bold rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center">
+                              {pendingTimesheetCount > 9 ? "9+" : pendingTimesheetCount}
+                            </span>
+                          )}
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right">
@@ -201,6 +223,7 @@ export function AdminSidebar() {
                         {item.name === "Calendar" && "View and schedule routes on calendar"}
                         {item.name === "Delivery Logs" && "View delivery history and records"}
                         {item.name === "Reports" && "View analytics and performance reports"}
+                        {item.name === "Timesheets" && "Review and approve driver timesheet edit requests"}
                         {item.name === "Performance" && "Monitor driver performance metrics"}
                         {item.name === "Settings" && "Configure system settings and preferences"}
                       </TooltipContent>

@@ -139,77 +139,64 @@ export async function notifyPharmacyDeliveryResult(
 }
 
 /**
- * Notifies a pharmacy's users that a driver has started heading their way
- * (the stop just moved to "picked_up"). Gated on notify_on_enroute, same
- * shape as notifyPharmacyDeliveryResult's notify_on_delivery gate above -
- * this is the "Delivery En Route" toggle in a pharmacy's own notification
- * settings (components/pharmacy-notification-settings.tsx).
+ * Notifies a driver that their timesheet edit request was approved or
+ * rejected. Single recipient, like notifyDriverRouteAssigned - there's no
+ * opt-out column for this, same as route assignments (only pharmacies can
+ * opt out of delivery-result alerts).
  */
-export async function notifyPharmacyEnRoute(
+export async function notifyDriverTimesheetReviewed(
   supabase: { from: (table: string) => any },
-  pharmacyId: string,
-  route: { name?: string | null },
-): Promise<NotifyResult[]> {
-  const { data: recipients, error } = await supabase
-    .from("pharmacy_users")
-    .select("id")
-    .eq("pharmacy_id", pharmacyId)
-    .eq("notify_on_enroute", true)
+  driverId: string,
+  result: { workDate: string; decision: "approved" | "rejected"; reviewNote?: string },
+): Promise<NotifyResult> {
+  const dateLabel = new Date(`${result.workDate}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })
 
-  if (error || !recipients || recipients.length === 0) {
-    return []
-  }
+  const title = result.decision === "approved" ? "Timesheet edit approved" : "Timesheet edit rejected"
+  const message =
+    result.decision === "approved"
+      ? `Your timesheet change for ${dateLabel} was approved.`
+      : `Your timesheet change for ${dateLabel} was not approved${result.reviewNote ? `: ${result.reviewNote}` : "."}`
 
-  return Promise.all(
-    recipients.map((r: any) =>
-      createNotification(supabase, {
-        userId: r.id,
-        severity: "info",
-        title: "Driver en route",
-        message: `A driver is on the way to your pharmacy${route.name ? ` (${route.name})` : ""}.`,
-      }),
-    ),
-  )
+  return createNotification(supabase, {
+    userId: driverId,
+    severity: result.decision === "approved" ? "success" : "warning",
+    title,
+    message,
+  })
 }
 
 /**
- * Notifies a pharmacy's users that a new route including one of their stops
- * was just created. Gated on notify_on_new_route, same shape as the other
- * pharmacy_users notification gates above - this is the "New Delivery
- * Assigned" toggle in a pharmacy's own notification settings.
+ * Pushes a real notification to every admin's registered devices when a
+ * driver requests a timesheet edit. Deliberately push-only, no
+ * notifications-table row: admins already see pending requests live in
+ * their own notification bell (components/admin-header.tsx polls
+ * timesheet_edit_requests directly, the same way it already does for route
+ * requests and pharmacy reports) - this just makes sure it also reaches an
+ * admin's phone when they aren't looking at the app. Same silent-no-op
+ * behavior as every other push here if Firebase isn't configured yet, or
+ * if no admin has a registered device.
  */
-export async function notifyPharmacyNewRoute(
+export async function pushAdminsTimesheetEditRequested(
   supabase: { from: (table: string) => any },
-  pharmacyId: string,
-  route: { name: string; startTime?: string | null },
-): Promise<NotifyResult[]> {
-  const { data: recipients, error } = await supabase
-    .from("pharmacy_users")
-    .select("id")
-    .eq("pharmacy_id", pharmacyId)
-    .eq("notify_on_new_route", true)
+  params: { driverName: string; workDate: string },
+): Promise<void> {
+  const { data: admins, error } = await supabase.from("users").select("id").eq("role", "admin")
+  if (error || !admins || admins.length === 0) return
 
-  if (error || !recipients || recipients.length === 0) {
-    return []
-  }
+  const dateLabel = new Date(`${params.workDate}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })
 
-  const when = route.startTime
-    ? ` scheduled ${new Date(route.startTime).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })}`
-    : ""
-
-  return Promise.all(
-    recipients.map((r: any) =>
-      createNotification(supabase, {
-        userId: r.id,
-        severity: "info",
-        title: "New delivery assigned",
-        message: `A new route (${route.name}) includes a delivery to your pharmacy${when}.`,
-      }),
+  await Promise.all(
+    admins.map((a: any) =>
+      sendPushToUser(supabase, a.id, {
+        title: "Timesheet edit requested",
+        body: `${params.driverName} requested a change to their ${dateLabel} timesheet.`,
+      }).catch((err) => console.error("Admin push failed:", err instanceof Error ? err.message : err)),
     ),
   )
 }

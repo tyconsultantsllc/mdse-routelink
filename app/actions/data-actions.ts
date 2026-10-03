@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getDriverDetails } from '@/lib/region-utils'
-import { notifyDriverRouteAssigned, notifyPharmacyDeliveryResult, notifyPharmacyEnRoute, notifyPharmacyNewRoute } from '@/lib/notifications'
+import { notifyDriverRouteAssigned, notifyPharmacyDeliveryResult, notifyDriverTimesheetReviewed, pushAdminsTimesheetEditRequested } from '@/lib/notifications'
 
 function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -209,86 +209,6 @@ export async function deleteUser(userId: string) {
   const { error } = await supabase.auth.admin.deleteUser(userId)
 
   if (error) throw error
-}
-
-/**
- * Turns off a driver's account without deleting it: blocks them from
- * signing in (see app/auth/actions.ts's getUserRole and lib/finish-login.ts)
- * and removes them from every "pick a driver" list in the app (see
- * getDriverDetails(...)?.active checks in the add-route/assign-driver/
- * assign-route-request modals and getDriversForPharmacyAssignment above) -
- * all without touching drivers.id, so their delivery_logs history (which
- * deleteUser above permanently erases via ON DELETE CASCADE) stays intact.
- *
- * Refuses if the driver currently has any non-terminal route (pending or
- * in-progress) - silently flipping `active` here would leave that route
- * assigned to someone who can no longer log in to work it, with nothing in
- * the UI calling that out. The admin has to reassign or cancel those routes
- * first, through the normal route-editing flow, before the account can be
- * deactivated.
- */
-export async function deactivateDriver(userId: string) {
-  const { role, userId: callerId } = await verifyAuth()
-
-  if (role !== 'admin') {
-    throw new Error('Forbidden: Admin access required')
-  }
-
-  if (userId === callerId) {
-    throw new Error('You cannot deactivate your own account')
-  }
-
-  const supabase = createAdminClient()
-
-  const { data: activeRoutes, error: routesError } = await supabase
-    .from('routes')
-    .select('id, name')
-    .eq('driver_id', userId)
-    .in('status', ['pending', 'in-progress'])
-
-  if (routesError) throw routesError
-
-  if (activeRoutes && activeRoutes.length > 0) {
-    const names = activeRoutes.map(r => r.name).join(', ')
-    throw new Error(
-      `This driver still has ${activeRoutes.length} active route${activeRoutes.length === 1 ? '' : 's'} (${names}). Reassign or cancel ${activeRoutes.length === 1 ? 'it' : 'them'} before deactivating this account.`,
-    )
-  }
-
-  const { data, error } = await supabase
-    .from('drivers')
-    .update({ active: false })
-    .eq('id', userId)
-    .select()
-
-  if (error) throw error
-  if (!data || data.length === 0) {
-    throw new Error('Could not deactivate: no matching driver record found')
-  }
-
-  return { success: true }
-}
-
-export async function reactivateDriver(userId: string) {
-  const { role } = await verifyAuth()
-
-  if (role !== 'admin') {
-    throw new Error('Forbidden: Admin access required')
-  }
-
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('drivers')
-    .update({ active: true })
-    .eq('id', userId)
-    .select()
-
-  if (error) throw error
-  if (!data || data.length === 0) {
-    throw new Error('Could not reactivate: no matching driver record found')
-  }
-
-  return { success: true }
 }
 
 export async function getPharmacyUsers(pharmacyId: string) {
@@ -937,13 +857,6 @@ interface RouteInsertData {
     isPriority?: boolean
     designatedTime?: string | null
   }>
-  // Defaults to true (a genuinely new route should tell the pharmacies on
-  // it). Callers that shouldn't fire this per-call pass false explicitly:
-  // the series generator (one call per future occurrence - notifying for
-  // every date in a months-long recurring schedule all at once would spam
-  // the pharmacy rather than inform them) and a pharmacy creating its own
-  // route (no reason to notify them about a route they just created).
-  notifyPharmacies?: boolean
 }
 
 /**
@@ -1016,23 +929,6 @@ async function insertRouteWithStops(supabase: ReturnType<typeof createAdminClien
       await notifyDriverRouteAssigned(supabase, route.driver_id, { name: route.name, startTime: route.start_time })
     } catch (notifyError) {
       console.error('Route-assigned notification failed:', notifyError)
-    }
-  }
-
-  // Best-effort - same reasoning as the driver notification above. Only
-  // fires here, on creation of a genuinely new route, not on every
-  // edit/update path elsewhere in this file - those are changes to an
-  // already-known route, not a pharmacy's first notice of a new delivery.
-  if (routeData.notifyPharmacies !== false) {
-    const distinctPharmacyIds = Array.from(new Set(routeData.stops.map(s => s.pharmacyId)))
-    try {
-      await Promise.all(
-        distinctPharmacyIds.map(pharmacyId =>
-          notifyPharmacyNewRoute(supabase, pharmacyId, { name: route.name, startTime: route.start_time }),
-        ),
-      )
-    } catch (notifyError) {
-      console.error('New-route pharmacy notification failed:', notifyError)
     }
   }
 
@@ -1188,11 +1084,6 @@ export async function createRouteSeries(input: {
       driverId: input.driverId,
       seriesId: series.id,
       stops: input.stops,
-      // See notifyPharmacies' doc comment on RouteInsertData - a recurring
-      // series can generate many future occurrences in one call, and
-      // notifying for every single one at once would spam the pharmacy
-      // rather than inform them.
-      notifyPharmacies: false,
     })
     routes.push(route)
   }
@@ -1334,95 +1225,6 @@ export async function notifyPharmacyOfDeliveryResult(
     })
   } catch (notifyError) {
     console.error('Delivery-result notification failed:', notifyError)
-  }
-
-  return { success: true }
-}
-
-/**
- * Notifies a pharmacy's opted-in contacts that a driver has started heading
- * their way. Same shape and reasoning as notifyPharmacyOfDeliveryResult
- * above - called from lib/driver-actions.ts's startStop() right after the
- * driver's own (client-side, RLS-protected) status write succeeds.
- */
-export async function notifyPharmacyOfEnRoute(routeId: number, pharmacyId: string) {
-  const { role } = await verifyAuth()
-  if (role !== 'driver' && role !== 'admin') {
-    throw new Error('Forbidden')
-  }
-
-  const supabase = createAdminClient()
-
-  // Best-effort - this only sends a notification, so it should never
-  // surface an error back to a driver who just started a stop.
-  try {
-    const { data: route } = await supabase.from('routes').select('name').eq('id', routeId).single()
-    await notifyPharmacyEnRoute(supabase, pharmacyId, { name: route?.name ?? null })
-  } catch (notifyError) {
-    console.error('En-route notification failed:', notifyError)
-  }
-
-  return { success: true }
-}
-
-/**
- * A pharmacy contact's own notification preferences - which events they
- * want surfaced (scripts/001_create_schema.sql's pharmacy_users columns).
- * Per-user, not per-pharmacy, since different contacts at the same
- * pharmacy may want different things.
- */
-export async function getOwnPharmacyNotificationSettings() {
-  const { userId, role } = await verifyAuth()
-  if (role !== 'pharmacy') {
-    throw new Error('Forbidden: pharmacy account required')
-  }
-
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('pharmacy_users')
-    .select('notify_on_delivery, notify_on_enroute, notify_on_delay, notify_on_new_route')
-    .eq('id', userId)
-    .single()
-
-  if (error) throw error
-
-  return {
-    deliveryCompleted: data?.notify_on_delivery ?? true,
-    deliveryEnRoute: data?.notify_on_enroute ?? true,
-    deliveryDelayed: data?.notify_on_delay ?? true,
-    newDeliveryAssigned: data?.notify_on_new_route ?? false,
-  }
-}
-
-export async function updateOwnPharmacyNotificationSettings(settings: {
-  deliveryCompleted: boolean
-  deliveryEnRoute: boolean
-  deliveryDelayed: boolean
-  newDeliveryAssigned: boolean
-}) {
-  const { userId, role } = await verifyAuth()
-  if (role !== 'pharmacy') {
-    throw new Error('Forbidden: pharmacy account required')
-  }
-
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('pharmacy_users')
-    .update({
-      notify_on_delivery: settings.deliveryCompleted,
-      notify_on_enroute: settings.deliveryEnRoute,
-      notify_on_delay: settings.deliveryDelayed,
-      notify_on_new_route: settings.newDeliveryAssigned,
-    })
-    .eq('id', userId)
-    .select()
-
-  if (error) throw error
-  // Same RLS-silent-failure gap fixed elsewhere this audit (see
-  // lib/driver-actions.ts) - without this check, a blocked update here
-  // would look like a successful save even though nothing changed.
-  if (!data || data.length === 0) {
-    throw new Error('Could not save notification settings: no matching pharmacy account found')
   }
 
   return { success: true }
@@ -2112,21 +1914,16 @@ export async function getDriversForPharmacyAssignment() {
 
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, first_name, last_name, drivers(region, active)')
+    .select('id, first_name, last_name, drivers(region)')
     .eq('role', 'driver')
 
   if (error) throw error
 
-  const allDrivers = (users || [])
-    // A deactivated driver shouldn't be offered to a pharmacy either -
-    // `active` defaults to true, so a driver record from before this
-    // column existed still counts as active.
-    .filter((u: any) => getDriverDetails(u)?.active !== false)
-    .map((u: any) => ({
-      id: u.id,
-      name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
-      region: getDriverDetails(u)?.region || null,
-    }))
+  const allDrivers = (users || []).map((u: any) => ({
+    id: u.id,
+    name: `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+    region: getDriverDetails(u)?.region || null,
+  }))
 
   const regionMatched = pharmacyRegion ? allDrivers.filter((d) => d.region === pharmacyRegion) : allDrivers
   return regionMatched.length > 0 ? regionMatched : allDrivers
@@ -2201,9 +1998,6 @@ export async function pharmacyCreateRouteWithDriver(input: {
     priority: input.isEmergency ? 'urgent' : 'medium',
     driverId: input.driverId,
     stops,
-    // The pharmacy creating this route is the same pharmacy that would
-    // otherwise be notified about it - nothing to tell them here.
-    notifyPharmacies: false,
   })
 
   const { error: requestError } = await supabase.from('route_requests').insert({
@@ -2764,4 +2558,457 @@ export async function savePushToken(token: string, platform: 'android' | 'ios' =
 
   if (error) throw error
   return { success: true }
+}
+
+// ---------------------------------------------------------------------------
+// Timesheets
+//
+// A day's hours are computed on the fly from that driver's routes
+// (actual_start_time/actual_end_time, falling back to the scheduled
+// start_time/end_time if a route was never "actually" started/ended) unless
+// an approved timesheet_entries row exists for that day, which overrides
+// it. Drivers can't write timesheet_entries directly - requesting a change
+// creates a timesheet_edit_requests row, and only an admin approving it (or
+// an admin's own direct edit) ever writes the approved table. See
+// scripts/031_driver_timesheets.sql.
+// ---------------------------------------------------------------------------
+
+// Calendar-date string (YYYY-MM-DD) for a Date, using UTC rather than the
+// server process's local timezone - Vercel's functions run in UTC but local
+// `next dev` doesn't, so anything based on getFullYear()/getMonth()/getDate()
+// here would group routes into different days depending on where it ran.
+function toDateString(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+function addDays(dateStr: string, days: number) {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return toDateString(d)
+}
+
+interface TimesheetDay {
+  date: string
+  clockIn: string | null
+  clockOut: string | null
+  breakMinutes: number
+  notes: string | null
+  source: 'auto' | 'manual' | 'none'
+  routeNames: string[]
+  pendingRequest: {
+    id: string
+    clockIn: string | null
+    clockOut: string | null
+    breakMinutes: number
+    reason: string
+    createdAt: string
+  } | null
+}
+
+// Shared by the driver's own lookup and the admin browsing a specific
+// driver's week - both just need "the 7 days starting weekStart for this
+// driver_id", the only difference is who's allowed to ask for it.
+async function getTimesheetForDriver(driverId: string, weekStart: string): Promise<TimesheetDay[]> {
+  const supabase = createAdminClient()
+  const weekEnd = addDays(weekStart, 7)
+
+  const { data: routes, error: routesError } = await supabase
+    .from('routes')
+    .select('id, name, start_time, end_time, actual_start_time, actual_end_time')
+    .eq('driver_id', driverId)
+    .gte('start_time', `${weekStart}T00:00:00Z`)
+    .lt('start_time', `${weekEnd}T00:00:00Z`)
+  if (routesError) throw routesError
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('timesheet_entries')
+    .select('*')
+    .eq('driver_id', driverId)
+    .gte('work_date', weekStart)
+    .lt('work_date', weekEnd)
+  if (entriesError) throw entriesError
+
+  const { data: requests, error: requestsError } = await supabase
+    .from('timesheet_edit_requests')
+    .select('*')
+    .eq('driver_id', driverId)
+    .eq('status', 'pending')
+    .gte('work_date', weekStart)
+    .lt('work_date', weekEnd)
+  if (requestsError) throw requestsError
+
+  const computedByDate = new Map<string, { clockIn: string | null; clockOut: string | null; routeNames: string[] }>()
+  for (const r of routes || []) {
+    if (!r.start_time) continue
+    const dateKey = toDateString(new Date(r.start_time))
+    const inTime = r.actual_start_time || r.start_time
+    const outTime = r.actual_end_time || r.end_time
+    const existing = computedByDate.get(dateKey)
+    if (!existing) {
+      computedByDate.set(dateKey, { clockIn: inTime, clockOut: outTime, routeNames: [r.name] })
+    } else {
+      if (inTime && (!existing.clockIn || inTime < existing.clockIn)) existing.clockIn = inTime
+      if (outTime && (!existing.clockOut || outTime > existing.clockOut)) existing.clockOut = outTime
+      existing.routeNames.push(r.name)
+    }
+  }
+
+  const entryByDate = new Map((entries || []).map((e: any) => [e.work_date, e]))
+  const pendingByDate = new Map((requests || []).map((r: any) => [r.work_date, r]))
+
+  const days: TimesheetDay[] = []
+  for (let i = 0; i < 7; i++) {
+    const dateKey = addDays(weekStart, i)
+    const approved = entryByDate.get(dateKey) as any
+    const computed = computedByDate.get(dateKey)
+    const pending = pendingByDate.get(dateKey) as any
+
+    days.push({
+      date: dateKey,
+      clockIn: approved?.clock_in ?? computed?.clockIn ?? null,
+      clockOut: approved?.clock_out ?? computed?.clockOut ?? null,
+      breakMinutes: approved?.break_minutes ?? 0,
+      notes: approved?.notes ?? null,
+      source: approved ? 'manual' : computed ? 'auto' : 'none',
+      routeNames: computed?.routeNames ?? [],
+      pendingRequest: pending
+        ? {
+            id: pending.id,
+            clockIn: pending.requested_clock_in,
+            clockOut: pending.requested_clock_out,
+            breakMinutes: pending.requested_break_minutes,
+            reason: pending.reason,
+            createdAt: pending.created_at,
+          }
+        : null,
+    })
+  }
+
+  return days
+}
+
+/**
+ * The logged-in driver's own timesheet for the 7 days starting weekStart
+ * (YYYY-MM-DD - should be a Monday, but any date works as a range start).
+ */
+export async function getMyTimesheet(weekStart: string) {
+  const { userId, role } = await verifyAuth()
+  if (role !== 'driver') {
+    throw new Error('Forbidden: driver account required')
+  }
+  return getTimesheetForDriver(userId, weekStart)
+}
+
+/**
+ * A driver requests a correction to one day of their timesheet. Never
+ * writes to timesheet_entries directly - this just files the request;
+ * admins see it in their notification bell and on /admin/timesheets.
+ */
+export async function requestTimesheetEdit(input: {
+  workDate: string
+  clockIn: string | null
+  clockOut: string | null
+  breakMinutes: number
+  reason: string
+}) {
+  const { userId, role } = await verifyAuth()
+  if (role !== 'driver') {
+    throw new Error('Forbidden: driver account required')
+  }
+  if (!input.reason || !input.reason.trim()) {
+    throw new Error('Please explain why you are requesting this change')
+  }
+  if (input.clockIn && input.clockOut && new Date(input.clockOut) <= new Date(input.clockIn)) {
+    throw new Error('Clock out must be after clock in')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: existingPending } = await supabase
+    .from('timesheet_edit_requests')
+    .select('id')
+    .eq('driver_id', userId)
+    .eq('work_date', input.workDate)
+    .eq('status', 'pending')
+    .maybeSingle()
+
+  if (existingPending) {
+    throw new Error('You already have a pending request for this day. Wait for it to be reviewed before submitting another.')
+  }
+
+  const { data, error } = await supabase
+    .from('timesheet_edit_requests')
+    .insert({
+      driver_id: userId,
+      work_date: input.workDate,
+      requested_clock_in: input.clockIn,
+      requested_clock_out: input.clockOut,
+      requested_break_minutes: input.breakMinutes ?? 0,
+      reason: input.reason.trim(),
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+
+  try {
+    const { data: driverUser } = await supabase
+      .from('users')
+      .select('first_name, last_name')
+      .eq('id', userId)
+      .single()
+    const driverName = driverUser ? `${driverUser.first_name || ''} ${driverUser.last_name || ''}`.trim() : 'A driver'
+    await pushAdminsTimesheetEditRequested(supabase, { driverName: driverName || 'A driver', workDate: input.workDate })
+  } catch (pushError) {
+    console.error('Admin push notification failed:', pushError)
+  }
+
+  return data
+}
+
+/**
+ * All requests awaiting admin review, oldest first (so the longest-waiting
+ * request surfaces at the top of the approval queue).
+ */
+export async function getPendingTimesheetEdits() {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('timesheet_edit_requests')
+    .select('*, drivers(users(first_name, last_name))')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Approves or rejects a driver's timesheet edit request. Approving writes
+ * (or overwrites) that day's timesheet_entries row; rejecting just closes
+ * out the request and leaves timesheet_entries untouched. Either way the
+ * driver gets a notification, same as a route assignment or delivery result.
+ */
+export async function reviewTimesheetEdit(requestId: string, decision: 'approved' | 'rejected', reviewNote?: string) {
+  const { userId, role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const { data: request, error: requestError } = await supabase
+    .from('timesheet_edit_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (requestError) throw requestError
+  if (!request) throw new Error('Request not found')
+  if (request.status !== 'pending') {
+    throw new Error('This request has already been reviewed')
+  }
+
+  if (decision === 'approved') {
+    const { error: upsertError } = await supabase
+      .from('timesheet_entries')
+      .upsert(
+        {
+          driver_id: request.driver_id,
+          work_date: request.work_date,
+          clock_in: request.requested_clock_in,
+          clock_out: request.requested_clock_out,
+          break_minutes: request.requested_break_minutes,
+          notes: request.reason,
+          source: 'manual',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'driver_id,work_date' },
+      )
+    if (upsertError) throw upsertError
+  }
+
+  const { error: updateError } = await supabase
+    .from('timesheet_edit_requests')
+    .update({
+      status: decision,
+      reviewed_by: userId,
+      review_note: reviewNote?.trim() || null,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq('id', requestId)
+
+  if (updateError) throw updateError
+
+  try {
+    await notifyDriverTimesheetReviewed(supabase, request.driver_id, {
+      workDate: request.work_date,
+      decision,
+      reviewNote,
+    })
+  } catch (notifyError) {
+    console.error('Timesheet review notification failed:', notifyError)
+  }
+
+  return { success: true }
+}
+
+/**
+ * Lets an admin correct a driver's timesheet directly, bypassing the
+ * request/approval cycle - useful for fixing something an admin spots
+ * themselves, since an admin approving their own request would be
+ * meaningless. Overwrites any existing entry for that day.
+ */
+export async function adminSetTimesheetEntry(input: {
+  driverId: string
+  workDate: string
+  clockIn: string | null
+  clockOut: string | null
+  breakMinutes: number
+  notes?: string
+}) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+  if (input.clockIn && input.clockOut && new Date(input.clockOut) <= new Date(input.clockIn)) {
+    throw new Error('Clock out must be after clock in')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('timesheet_entries')
+    .upsert(
+      {
+        driver_id: input.driverId,
+        work_date: input.workDate,
+        clock_in: input.clockIn,
+        clock_out: input.clockOut,
+        break_minutes: input.breakMinutes ?? 0,
+        notes: input.notes?.trim() || null,
+        source: 'manual',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'driver_id,work_date' },
+    )
+
+  if (error) throw error
+  return { success: true }
+}
+
+/**
+ * Admin view of any one driver's week - same shape as getMyTimesheet, just
+ * not restricted to the caller's own driver_id.
+ */
+export async function getDriverTimesheet(driverId: string, weekStart: string) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+  return getTimesheetForDriver(driverId, weekStart)
+}
+
+/**
+ * A flat, CSV-ready row per driver per worked day for the given week - for
+ * the admin "Export CSV" button. This is time tracking only: there's no
+ * hourly rate anywhere in this schema, so it reports hours, not pay. Days
+ * with no clock in/out at all are left out, rather than padding the export
+ * with blank rows for every driver on every day they didn't work.
+ */
+export async function getWeeklyTimesheetReport(weekStart: string) {
+  const { role } = await verifyAuth()
+  if (role !== 'admin') {
+    throw new Error('Forbidden: Admin access required')
+  }
+
+  const supabase = createAdminClient()
+  const weekEnd = addDays(weekStart, 7)
+
+  const { data: driverUsers, error: usersError } = await supabase
+    .from('users')
+    .select('id, first_name, last_name')
+    .eq('role', 'driver')
+    .order('first_name')
+  if (usersError) throw usersError
+
+  const { data: routes, error: routesError } = await supabase
+    .from('routes')
+    .select('driver_id, start_time, end_time, actual_start_time, actual_end_time')
+    .not('driver_id', 'is', null)
+    .gte('start_time', `${weekStart}T00:00:00Z`)
+    .lt('start_time', `${weekEnd}T00:00:00Z`)
+  if (routesError) throw routesError
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('timesheet_entries')
+    .select('*')
+    .gte('work_date', weekStart)
+    .lt('work_date', weekEnd)
+  if (entriesError) throw entriesError
+
+  const computedByKey = new Map<string, { clockIn: string | null; clockOut: string | null }>()
+  for (const r of routes || []) {
+    if (!r.start_time || !r.driver_id) continue
+    const key = `${r.driver_id}|${toDateString(new Date(r.start_time))}`
+    const inTime = r.actual_start_time || r.start_time
+    const outTime = r.actual_end_time || r.end_time
+    const existing = computedByKey.get(key)
+    if (!existing) {
+      computedByKey.set(key, { clockIn: inTime, clockOut: outTime })
+    } else {
+      if (inTime && (!existing.clockIn || inTime < existing.clockIn)) existing.clockIn = inTime
+      if (outTime && (!existing.clockOut || outTime > existing.clockOut)) existing.clockOut = outTime
+    }
+  }
+
+  const entryByKey = new Map((entries || []).map((e: any) => [`${e.driver_id}|${e.work_date}`, e]))
+
+  const rows: Array<{
+    driverName: string
+    date: string
+    clockIn: string | null
+    clockOut: string | null
+    breakMinutes: number
+    hours: number | null
+    source: 'auto' | 'manual' | 'none'
+  }> = []
+
+  for (const u of driverUsers || []) {
+    const driverName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Unknown'
+    for (let i = 0; i < 7; i++) {
+      const dateKey = addDays(weekStart, i)
+      const key = `${u.id}|${dateKey}`
+      const approved = entryByKey.get(key) as any
+      const computed = computedByKey.get(key)
+      const clockIn = approved?.clock_in ?? computed?.clockIn ?? null
+      const clockOut = approved?.clock_out ?? computed?.clockOut ?? null
+      if (!clockIn && !clockOut) continue
+
+      const breakMinutes = approved?.break_minutes ?? 0
+      const hours =
+        clockIn && clockOut
+          ? Math.max(
+              0,
+              Math.round(
+                ((new Date(clockOut).getTime() - new Date(clockIn).getTime()) / 3600000 - breakMinutes / 60) * 100,
+              ) / 100,
+            )
+          : null
+
+      rows.push({
+        driverName,
+        date: dateKey,
+        clockIn,
+        clockOut,
+        breakMinutes,
+        hours,
+        source: approved ? 'manual' : computed ? 'auto' : 'none',
+      })
+    }
+  }
+
+  return rows
 }

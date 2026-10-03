@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "928520409176",
+    "project_id": "mdse-routelink",
+    "storage_bucket": "mdse-routelink.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:928520409176:android:a22f5076de37b3a3697a2d",
+        "android_client_info": {
+          "package_name": "com.mdseroutelink.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMZ-AhYNaRWf6ozt4yXOtiE4snjqpZjeE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

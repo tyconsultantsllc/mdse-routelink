@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { useAdminMobileMenu } from "@/lib/admin-mobile-menu"
+import { usePushRegistration } from "@/lib/use-push-registration"
 
 interface AdminHeaderProps {
   title: string
@@ -31,6 +32,24 @@ export function AdminHeader({ title, children }: AdminHeaderProps) {
   // live summary, not a second source of truth.
   const dismissedIdsRef = useRef<Set<string>>(new Set())
   const readIdsRef = useRef<Set<string>>(new Set())
+  const [adminUserId, setAdminUserId] = useState<string | null>(null)
+
+  // Registers this device for push (no-ops outside the wrapped Android app,
+  // or until NEXT_PUBLIC_PUSH_NOTIFICATIONS_ENABLED/Firebase are set up -
+  // see lib/use-push-registration.ts) so an admin who isn't looking at the
+  // app still gets alerted to things like a new timesheet edit request.
+  usePushRegistration(adminUserId)
+
+  useEffect(() => {
+    const loadUserId = async () => {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setAdminUserId(user?.id ?? null)
+    }
+    loadUserId()
+  }, [])
 
   useEffect(() => {
     checkNotifications()
@@ -84,6 +103,33 @@ export function AdminHeader({ title, children }: AdminHeaderProps) {
           type: "error",
           title: `Emergency Route Request - ${(r as any).pharmacies?.name || "Unknown Pharmacy"}`,
           message: "An emergency delivery request is waiting for a driver.",
+          timestamp: new Date(r.created_at),
+          read: readIdsRef.current.has(id),
+        })
+      }
+
+      const { data: pendingTimesheetEdits } = await supabase
+        .from("timesheet_edit_requests")
+        .select("id, work_date, created_at, drivers(users(first_name, last_name))")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      for (const r of pendingTimesheetEdits || []) {
+        const id = `timesheet-edit-${r.id}`
+        if (dismissedIdsRef.current.has(id)) continue
+        const driverInfo: any = Array.isArray((r as any).drivers) ? (r as any).drivers[0] : (r as any).drivers
+        const userInfo: any = Array.isArray(driverInfo?.users) ? driverInfo.users[0] : driverInfo?.users
+        const driverName = userInfo ? `${userInfo.first_name} ${userInfo.last_name}` : "A driver"
+        const dateLabel = new Date(`${r.work_date}T00:00:00`).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+        notifs.push({
+          id,
+          type: "info",
+          title: "Timesheet Edit Requested",
+          message: `${driverName} requested a change to their ${dateLabel} timesheet. Review it under Timesheets.`,
           timestamp: new Date(r.created_at),
           read: readIdsRef.current.has(id),
         })
